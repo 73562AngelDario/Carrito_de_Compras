@@ -26,6 +26,20 @@ const client = ACCESS_TOKEN
 //  API DE PRODUCTOS (sincroniza admin ↔ tienda)
 // ─────────────────────────────────────────────
 
+// ✅ FIX: Crear tabla de productos si no existe (faltaba por completo)
+// img es LONGTEXT porque las fotos subidas se guardan como base64 y pueden
+// ser cadenas muy largas; con VARCHAR fallaban o se truncaban los INSERT/UPDATE.
+db.query(`CREATE TABLE IF NOT EXISTS productos (
+    id INT AUTO_INCREMENT PRIMARY KEY,
+    name VARCHAR(255),
+    category VARCHAR(100),
+    description TEXT,
+    price DECIMAL(10,2),
+    stock INT DEFAULT 0,
+    img LONGTEXT,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+)`).catch(err => console.error('Error creando tabla productos:', err));
+
 // GET — Obtener todos los productos
 app.get('/api/productos', async (req, res) => {
     try {
@@ -47,8 +61,8 @@ app.post('/api/productos', async (req, res) => {
         );
         res.json({ id: result.insertId, name, category, description, price, stock, img });
     } catch (err) {
-        console.error('Error al agregar producto:', err);
-        res.status(500).json({ error: err.message });
+        console.error('Error al agregar producto:', err.message);
+        res.status(500).json({ error: 'No se pudo agregar el producto', message: err.message });
     }
 });
 
