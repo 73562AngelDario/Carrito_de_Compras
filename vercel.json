@@ -1,0 +1,18 @@
+{
+  "version": 2,
+  "builds": [
+    { "src": "server.js", "use": "@vercel/node" },
+    { "src": "index.html", "use": "@vercel/static" },
+    { "src": "admin.html", "use": "@vercel/static" },
+    { "src": "empleado.html", "use": "@vercel/static" },
+    { "src": "repartidor.html", "use": "@vercel/static" }
+  ],
+  "routes": [
+    { "src": "/api/(.*)", "dest": "/server.js" },
+    { "src": "/crear-preferencia", "dest": "/server.js" },
+    { "src": "/admin.html", "dest": "/admin.html" },
+    { "src": "/empleado.html", "dest": "/empleado.html" },
+    { "src": "/repartidor.html", "dest": "/repartidor.html" },
+    { "src": "/", "dest": "/index.html" }
+  ]
+}

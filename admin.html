@@ -1,0 +1,1319 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Portal Administrador - Delicias de Campeche</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Playfair+Display:wght@600;700&family=Manrope:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+    <script src="https://unpkg.com/lucide@latest"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+
+    <script>
+        const DB_KEY = 'delicias_campeche_db_v4';
+        const defaultData = {
+            users: [
+                { id: 1, name: "Admin Principal", email: "admin@correo.com", password: "admin", role: "admin" },
+                { id: 2, name: "Empleado de Cocina", email: "emp@correo.com", password: "123", role: "employee" },
+                { id: 3, name: "Cliente Prueba", email: "test@correo.com", password: "123", role: "client" }
+            ],
+            products: [
+                { id: 1, name: "Café Americano", category: "Bebidas", desc: "Grano tostado de altura.", price: 35.00, stock: 50, img: "https://images.unsplash.com/photo-1541167760496-162955ed8a9f?w=500" },
+                { id: 2, name: "Pastel Tres Leches", category: "Pasteles", desc: "Clásico bañado en vainilla.", price: 450.00, stock: 4, img: "https://images.unsplash.com/photo-1563729784474-d77dbb933a9e?w=500" },
+                { id: 3, name: "Galletas Chispas", category: "Galletas", desc: "Cacao puro 70%.", price: 25.00, stock: 3, img: "https://images.unsplash.com/photo-1499636136210-6f4ee915583e?w=500" },
+                { id: 4, name: "Concha de Vainilla", category: "Pan Dulce", desc: "Masa madre cubierta de azúcar.", price: 18.00, stock: 0, img: "https://images.unsplash.com/photo-1509440159596-0249088772ff?w=500" },
+                { id: 8, name: "Frappé Moka", category: "Bebidas", desc: "Refrescante mezcla de café y chocolate.", price: 65.00, stock: 15, img: "https://images.unsplash.com/photo-1572490122747-3968b75cc699?w=500" },
+                { id: 9, name: "Trufas de Cacao", category: "Chocolates", desc: "Ganache semi-amargo al 70%.", price: 85.00, stock: 20, img: "https://images.unsplash.com/photo-1548842603-4f9e1fc2c823?w=500" }
+            ],
+            reviews: [
+                { id: 1, productId: 2, productName: "Pastel Tres Leches", user: "Mariana P.", stars: 5, text: "El mejor pastel que he probado. Super fresco.", date: "Hace 2 días", response: null },
+                { id: 2, productId: 1, productName: "Café Americano", user: "Roberto D.", stars: 2, text: "Llegó un poco frío.", date: "Hace 1 semana", response: "Sentimos el inconveniente Roberto." },
+                { id: 3, productId: 3, productName: "Galletas Chispas", user: "Miguel A.", stars: 4, text: "Muy buenas pero algo caras.", date: "Hace 3 semanas", response: null }
+            ],
+            orders: [],
+            stockHistory: []
+        };
+
+        window.DB = {
+            init: function() { if (!localStorage.getItem(DB_KEY)) localStorage.setItem(DB_KEY, JSON.stringify(defaultData)); },
+            getData: function() { return JSON.parse(localStorage.getItem(DB_KEY)); },
+            saveData: function(data) { localStorage.setItem(DB_KEY, JSON.stringify(data)); window.dispatchEvent(new Event('local_db_update')); },
+            getProducts: () => window.DB.getData().products || [],
+            updateStock: (id, change, reason) => {
+                let d = window.DB.getData();
+                let p = d.products.find(x => x.id === id);
+                if (p && p.stock + change >= 0) {
+                    const prev = p.stock;
+                    p.stock += change;
+                    if (!d.stockHistory) d.stockHistory = [];
+                    d.stockHistory.push({ id: Date.now(), productId: id, productName: p.name, change, prevStock: prev, newStock: p.stock, reason: reason || (change > 0 ? 'Reposición manual' : 'Ajuste manual'), date: new Date().toISOString() });
+                    window.DB.saveData(d);
+                    return true;
+                }
+                return false;
+            },
+            addProduct: (prod) => { let d = window.DB.getData(); d.products.push(prod); window.DB.saveData(d); },
+            deleteProduct: (id) => { let d = window.DB.getData(); d.products = d.products.filter(x => x.id !== id); window.DB.saveData(d); },
+            getUsers: () => window.DB.getData().users || [],
+            addUser: (user) => { let d = window.DB.getData(); d.users.push(user); window.DB.saveData(d); },
+            deleteUser: (id) => { let d = window.DB.getData(); d.users = d.users.filter(x => x.id !== id); window.DB.saveData(d); },
+            updateUserPassword: (id, pw) => { let d = window.DB.getData(); let u = d.users.find(x => x.id === id); if(u){u.password=pw; window.DB.saveData(d); return true;} return false; },
+            getReviews: () => window.DB.getData().reviews || [],
+            addReview: (rev) => { let d = window.DB.getData(); d.reviews.unshift(rev); window.DB.saveData(d); },
+            updateReviewResponse: (id, resp) => { let d = window.DB.getData(); let r = d.reviews.find(x => Number(x.id)===Number(id)); if(r){r.response=resp; window.DB.saveData(d);} },
+            deleteReview: (id) => { let d = window.DB.getData(); d.reviews = d.reviews.filter(x => x.id !== id); window.DB.saveData(d); },
+            getOrders: () => window.DB.getData().orders || [],
+            addOrder: (order) => { let d = window.DB.getData(); if(!d.orders) d.orders=[]; if(!order.date) order.date=new Date().toISOString(); d.orders.unshift(order); window.DB.saveData(d); },
+            updateOrderStatus: (id, status) => { let d = window.DB.getData(); let o = d.orders.find(x => x.id===id); if(o){o.status=status; window.DB.saveData(d);} },
+            getStockHistory: () => window.DB.getData().stockHistory || [],
+            seedDemoOrders: () => {
+                let d = window.DB.getData();
+                if (d.orders && d.orders.length > 0) return;
+                const prods = d.products;
+                const statuses = ['delivered','delivered','delivered','pending','cancelled'];
+                const now = new Date();
+                const demo = [];
+                for (let i = 0; i < 45; i++) {
+                    const daysAgo = Math.floor(Math.random() * 30);
+                    const date = new Date(now); date.setDate(date.getDate() - daysAgo);
+                    const numItems = Math.floor(Math.random() * 3) + 1;
+                    const items = []; let total = 0;
+                    for (let j = 0; j < numItems; j++) {
+                        const prod = prods[Math.floor(Math.random() * prods.length)];
+                        const qty = Math.floor(Math.random() * 3) + 1;
+                        items.push({ productId: prod.id, productName: prod.name, qty, price: prod.price });
+                        total += prod.price * qty;
+                    }
+                    demo.push({ id: Date.now() - i*100000, items, total, status: statuses[Math.floor(Math.random()*statuses.length)], date: date.toISOString(), customer: `Cliente ${i+1}` });
+                }
+                d.orders = demo;
+                window.DB.saveData(d);
+            }
+        };
+        window.DB.init();
+        window.DB.seedDemoOrders();
+
+    // ======== GESTIÓN DE PEDIDOS (API MySQL) ========
+    let todosLosPedidos = [];
+    let cachePedidos = [];
+    let filtroActivo = 'Todos';
+    // Historial de movimientos de stock en esta sesión (en memoria)
+    let stockHistoryLocal = [];
+
+    async function cargarPedidosAdmin() {
+        const lista = document.getElementById('pedidos-admin-lista');
+        lista.innerHTML = '<div class="text-center p-12 text-stone-400">Cargando pedidos...</div>';
+        try {
+            const res = await fetch('/api/pedidos');
+            todosLosPedidos = await res.json();
+            cachePedidos = todosLosPedidos;
+            renderPedidosAdmin(filtroActivo);
+        } catch(err) {
+            lista.innerHTML = '<div class="text-center p-12 text-red-400 font-bold">Error al conectar con el servidor.</div>';
+        }
+    }
+
+    function filtrarPedidos(filtro) {
+        filtroActivo = filtro;
+        document.querySelectorAll('.filter-btn').forEach(b => {
+            b.classList.remove('bg-[#8A2A2B]', 'text-white');
+            b.classList.add('bg-white', 'text-stone-600');
+        });
+        event.target.classList.add('bg-[#8A2A2B]', 'text-white');
+        event.target.classList.remove('bg-white', 'text-stone-600');
+        renderPedidosAdmin(filtro);
+    }
+
+    function renderPedidosAdmin(filtro) {
+        const lista = document.getElementById('pedidos-admin-lista');
+        const pedidos = filtro === 'Todos' ? todosLosPedidos : todosLosPedidos.filter(o => o.status === filtro);
+
+        if (pedidos.length === 0) {
+            lista.innerHTML = `<div class="text-center bg-white p-12 rounded-2xl border border-stone-100 text-stone-400">
+                <i data-lucide="inbox" class="w-10 h-10 mx-auto mb-3 opacity-30"></i>
+                <p>No hay pedidos con este filtro.</p>
+            </div>`;
+            lucide.createIcons();
+            return;
+        }
+
+        const statusColors = {
+            'Pendiente': 'bg-amber-100 text-amber-700',
+            'Preparando': 'bg-blue-100 text-blue-700',
+            'Listo': 'bg-purple-100 text-purple-700',
+            'En camino': 'bg-cyan-100 text-cyan-700',
+            'Entregado': 'bg-green-100 text-green-700',
+            'Cancelado': 'bg-red-100 text-red-700',
+        };
+
+        lista.innerHTML = pedidos.map(o => {
+            const items = typeof o.items === 'string' ? JSON.parse(o.items) : (o.items || []);
+            const colorClass = statusColors[o.status] || 'bg-stone-100 text-stone-600';
+            const tipoIcon = o.tipoEntrega === 'domicilio' ? 'bike' : 'store';
+            const tipoLabel = o.tipoEntrega === 'domicilio' ? 'Domicilio' : 'En tienda';
+
+            return `
+            <div class="admin-card flex flex-col sm:flex-row gap-4 items-start">
+                <div class="flex-1 min-w-0">
+                    <div class="flex flex-wrap gap-2 items-center mb-2">
+                        <span class="font-bold text-stone-800">Pedido #${o.id}</span>
+                        <span class="text-xs font-bold px-3 py-1 rounded-full ${colorClass}">${o.status}</span>
+                        <span class="text-xs font-medium text-stone-500 flex items-center gap-1">
+                            <i data-lucide="${tipoIcon}" class="w-3 h-3"></i> ${tipoLabel}
+                        </span>
+                    </div>
+                    <p class="font-semibold text-stone-700 mb-1">${o.cliente || 'Cliente Web'}</p>
+                    ${o.direccion ? `<p class="text-xs text-stone-500 mb-2">📍 ${o.direccion}</p>` : ''}
+                    <p class="text-xs text-stone-400 mb-3">${o.fecha || o.created_at}</p>
+                    <div class="text-sm text-stone-600">
+                        ${items.map(i => `<span class="inline-block bg-stone-50 border border-stone-100 rounded-lg px-2 py-1 mr-1 mb-1 text-xs font-medium">${i.quantity || i.qty || 1}× ${i.name}</span>`).join('')}
+                    </div>
+                    ${o.motivo_cancelacion ? `<p class="text-xs text-red-500 mt-2 font-medium">Motivo cancelación: ${o.motivo_cancelacion}</p>` : ''}
+                </div>
+                <div class="flex flex-col items-end gap-3 flex-shrink-0">
+                    <p class="text-2xl font-black text-[#8A2A2B]">$${parseFloat(o.total || 0).toFixed(2)}</p>
+                    ${o.status !== 'Entregado' && o.status !== 'Cancelado' ? `
+                    <div class="flex gap-2">
+                        <select onchange="cambiarEstadoPedido(${o.id}, this.value)" class="text-xs border border-stone-200 rounded-lg px-2 py-2 font-medium bg-white focus:outline-none focus:border-[#8A2A2B]">
+                            <option value="">Cambiar estado…</option>
+                            <option value="Pendiente">Pendiente</option>
+                            <option value="Preparando">Preparando</option>
+                            <option value="Listo">Listo</option>
+                            <option value="En camino">En camino</option>
+                            <option value="Entregado">Entregado</option>
+                        </select>
+                        <button onclick="cancelarPedidoAdmin(${o.id})" class="text-xs bg-red-50 text-red-600 hover:bg-red-100 border border-red-200 px-3 py-2 rounded-lg font-bold transition-colors">
+                            Cancelar
+                        </button>
+                    </div>` : ''}
+                </div>
+            </div>`;
+        }).join('');
+        lucide.createIcons();
+    }
+
+    async function cambiarEstadoPedido(id, nuevoStatus) {
+        if (!nuevoStatus) return;
+        try {
+            await fetch(`/api/pedidos/${id}`, {
+                method: 'PUT',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ status: nuevoStatus })
+            });
+            showToast(`Pedido #${id} → ${nuevoStatus}`);
+            cargarPedidosAdmin();
+        } catch(err) {
+            showToast('Error al actualizar pedido');
+        }
+    }
+
+    async function cancelarPedidoAdmin(id) {
+        const motivo = prompt(`¿Motivo de cancelación del pedido #${id}?`);
+        if (motivo === null) return; // canceló el prompt
+        try {
+            await fetch(`/api/pedidos/${id}`, {
+                method: 'PUT',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ status: 'Cancelado', motivo_cancelacion: motivo || 'Sin motivo' })
+            });
+            showToast(`Pedido #${id} cancelado`);
+            cargarPedidosAdmin();
+        } catch(err) {
+            showToast('Error al cancelar pedido');
+        }
+    }
+
+    </script>
+
+    <style>
+        :root { --marron: #8A2A2B; --marron-dark: #6D2122; --sidebar-bg: #1A1512; }
+        body { font-family: 'Manrope', sans-serif; background-color: #F3F4F6; margin: 0; overflow: hidden; }
+        .font-serif { font-family: 'Playfair Display', serif; }
+        .page-view { display: none; height: 100vh; width: 100vw; }
+        .page-view.active { display: flex; }
+        .login-bg { background-image: url('https://images.unsplash.com/photo-1555507036-ab1f4038808a?q=80&w=2000'); background-size: cover; background-position: center; }
+        aside { width: 260px; background-color: var(--sidebar-bg); color: white; display: flex; flex-direction: column; flex-shrink: 0; }
+        .nav-btn { display: flex; align-items: center; gap: 12px; padding: 16px 24px; color: #A0A0A0; transition: all 0.2s; cursor: pointer; border-left: 4px solid transparent; }
+        .nav-btn:hover { background-color: rgba(255,255,255,0.05); color: white; }
+        .nav-btn.active { background-color: rgba(138,42,43,0.15); color: white; border-left-color: var(--marron); }
+        main { flex-grow: 1; overflow-y: auto; padding: 32px; background-color: #F9FAFB; }
+        .admin-card { background-color: white; border-radius: 20px; padding: 24px; box-shadow: 0 4px 6px rgba(0,0,0,0.02); border: 1px solid #E5E7EB; }
+        .form-input { width: 100%; padding: 12px 16px; border-radius: 10px; border: 1px solid #E5E7EB; font-size: 14px; outline: none; transition: border-color 0.2s; box-sizing: border-box; }
+        .form-input:focus { border-color: var(--marron); }
+        .modal-overlay { position: fixed; inset: 0; background: rgba(0,0,0,0.5); backdrop-filter: blur(4px); display: none; align-items: center; justify-content: center; z-index: 50; }
+        .modal-overlay.show { display: flex; }
+        .modal-content { background: white; width: 100%; max-width: 500px; border-radius: 24px; padding: 32px; transform: scale(0.95); opacity: 0; transition: all 0.3s; max-height: 90vh; overflow-y: auto; }
+        .modal-overlay.show .modal-content { transform: scale(1); opacity: 1; }
+
+        /* ALERTA STOCK */
+        .alert-bar { background: linear-gradient(135deg,#FEF3C7,#FDE68A); border: 1px solid #F59E0B; border-radius: 16px; padding: 14px 20px; margin-bottom: 20px; display: none; align-items: center; flex-wrap: wrap; gap: 8px; }
+        .alert-bar.visible { display: flex; }
+        .alert-chip { border-radius: 8px; padding: 4px 12px; font-size: 12px; font-weight: 700; display: inline-flex; align-items: center; gap: 4px; }
+        .chip-out { background: #FEF2F2; border: 1px solid #FCA5A5; color: #DC2626; }
+        .chip-low { background: white; border: 1px solid #FCD34D; color: #D97706; }
+
+        /* TIMELINE */
+        .tl-item { position: relative; padding-left: 34px; padding-bottom: 18px; }
+        .tl-item::before { content:''; position:absolute; left:11px; top:24px; bottom:0; width:2px; background:#E5E7EB; }
+        .tl-item:last-child::before { display:none; }
+        .tl-dot { position:absolute; left:0; top:4px; width:22px; height:22px; border-radius:50%; display:flex; align-items:center; justify-content:center; font-size:11px; font-weight:900; }
+        .dot-up   { background:#D1FAE5; color:#059669; }
+        .dot-down { background:#FEE2E2; color:#DC2626; }
+        .dot-sale { background:#DBEAFE; color:#2563EB; }
+
+        .chart-box { position:relative; height:240px; }
+        .stat-card { background:white; border-radius:16px; padding:18px 22px; border:1px solid #E5E7EB; }
+        .stat-val { font-size:28px; font-weight:800; font-family:'Playfair Display',serif; line-height:1; margin-top:4px; }
+        .top-badge { background: linear-gradient(135deg,#8A2A2B,#C45252); color:white; border-radius:6px; padding:2px 8px; font-size:10px; font-weight:700; display:inline-flex; align-items:center; gap:3px; vertical-align:middle; }
+    </style>
+</head>
+<body>
+
+<!-- LOGIN -->
+<div id="login-view" class="page-view active login-bg relative justify-center items-center">
+    <div class="absolute inset-0 bg-black/60 backdrop-blur-sm"></div>
+    <div class="relative z-10 bg-white p-8 rounded-3xl shadow-2xl w-full max-w-md mx-6">
+        <div class="text-center mb-8">
+            <div class="w-16 h-16 bg-[#8A2A2B] rounded-full flex items-center justify-center text-white font-serif text-3xl mx-auto mb-4 shadow-lg">D</div>
+            <h2 class="font-serif text-3xl font-bold text-stone-900">Portal Administrador</h2>
+        </div>
+        <form onsubmit="event.preventDefault(); handleLogin();" class="space-y-4">
+            <input type="email" id="login-email" required class="form-input" placeholder="Correo Institucional">
+            <input type="password" id="login-pass" required class="form-input" placeholder="Contraseña">
+            <button type="submit" class="w-full bg-[#8A2A2B] text-white py-3.5 rounded-xl font-bold mt-4 hover:bg-[#6D2122] transition-colors shadow-md">Acceder</button>
+        </form>
+    </div>
+</div>
+
+<!-- PANEL -->
+<div id="admin-view" class="page-view bg-stone-100">
+    <aside>
+        <div class="p-6 mb-4 flex items-center gap-3">
+            <div class="w-10 h-10 bg-white rounded-full flex items-center justify-center text-[#8A2A2B] font-serif text-xl shadow-lg">D</div>
+            <div><h1 class="font-serif text-lg font-bold leading-tight">Admin</h1><p class="text-[9px] uppercase tracking-widest text-stone-400">Panel Central</p></div>
+        </div>
+        <nav class="flex flex-col gap-1">
+            <button onclick="switchTab('products')" id="tab-products" class="nav-btn active"><i data-lucide="package" class="w-5 h-5"></i> Inventario Central</button>
+            <button onclick="switchTab('reports')" id="tab-reports" class="nav-btn"><i data-lucide="bar-chart-2" class="w-5 h-5"></i> Reportes de Venta</button>
+            <button onclick="switchTab('flow')" id="tab-flow" class="nav-btn"><i data-lucide="git-branch" class="w-5 h-5"></i> Flujo de Producto</button>
+            <button onclick="switchTab('reviews')" id="tab-reviews" class="nav-btn"><i data-lucide="message-square" class="w-5 h-5"></i> Moderar Reseñas</button>
+            <button onclick="switchTab('users')" id="tab-users" class="nav-btn"><i data-lucide="users" class="w-5 h-5"></i> Cuentas y Seguridad</button>
+            <button onclick="switchTab('orders')" id="tab-orders" class="nav-btn"><i data-lucide="shopping-bag" class="w-5 h-5"></i> Gestión de Pedidos</button>
+            <button onclick="switchTab('settings')" id="tab-settings" class="nav-btn"><i data-lucide="settings" class="w-5 h-5"></i> Mi Cuenta</button>
+        </nav>
+        <div class="mt-auto p-6 border-t border-white/10">
+            <button onclick="logout()" class="flex items-center gap-3 text-red-400 hover:text-red-500 transition-colors text-sm font-semibold w-full">
+                <i data-lucide="log-out" class="w-5 h-5"></i> Cerrar Sesión
+            </button>
+        </div>
+    </aside>
+
+    <main>
+
+        <!-- ============ GESTIÓN DE PEDIDOS ============ -->
+        <section id="view-orders" class="hidden">
+            <div class="flex justify-between items-center mb-6">
+                <div>
+                    <h2 class="text-3xl font-bold text-stone-900 font-serif">Gestión de Pedidos</h2>
+                    <p class="text-sm text-stone-500">Pedidos en tiempo real de todos los canales.</p>
+                </div>
+                <button onclick="cargarPedidosAdmin()" class="flex items-center gap-2 bg-stone-100 hover:bg-stone-200 text-stone-700 px-4 py-2 rounded-xl font-bold text-sm transition-colors">
+                    <i data-lucide="refresh-cw" class="w-4 h-4"></i> Actualizar
+                </button>
+            </div>
+
+            <div class="flex gap-2 mb-6 flex-wrap">
+                <button onclick="filtrarPedidos('Todos')" class="filter-btn active px-4 py-2 rounded-full text-sm font-bold border border-stone-200 bg-[#8A2A2B] text-white transition-all">Todos</button>
+                <button onclick="filtrarPedidos('Pendiente')" class="filter-btn px-4 py-2 rounded-full text-sm font-bold border border-stone-200 bg-white text-stone-600 hover:border-[#8A2A2B] transition-all">Pendiente</button>
+                <button onclick="filtrarPedidos('Preparando')" class="filter-btn px-4 py-2 rounded-full text-sm font-bold border border-stone-200 bg-white text-stone-600 hover:border-[#8A2A2B] transition-all">Preparando</button>
+                <button onclick="filtrarPedidos('Listo')" class="filter-btn px-4 py-2 rounded-full text-sm font-bold border border-stone-200 bg-white text-stone-600 hover:border-[#8A2A2B] transition-all">Listo</button>
+                <button onclick="filtrarPedidos('En camino')" class="filter-btn px-4 py-2 rounded-full text-sm font-bold border border-stone-200 bg-white text-stone-600 hover:border-[#8A2A2B] transition-all">En camino</button>
+                <button onclick="filtrarPedidos('Entregado')" class="filter-btn px-4 py-2 rounded-full text-sm font-bold border border-stone-200 bg-white text-stone-600 hover:border-[#8A2A2B] transition-all">Entregado</button>
+                <button onclick="filtrarPedidos('Cancelado')" class="filter-btn px-4 py-2 rounded-full text-sm font-bold border border-stone-200 bg-white text-stone-600 hover:border-[#8A2A2B] transition-all">Cancelado</button>
+            </div>
+
+            <div id="pedidos-admin-lista" class="space-y-4">
+                <div class="text-center p-12 text-stone-400">Cargando pedidos...</div>
+            </div>
+        </section>
+
+        <!-- ============ INVENTARIO ============ -->
+        <section id="view-products" class="block">
+            <!-- ALERTA STOCK BAJO -->
+            <div id="stock-alert-bar" class="alert-bar">
+                <i data-lucide="alert-triangle" class="w-5 h-5 text-amber-600 flex-shrink-0"></i>
+                <span class="text-sm font-bold text-amber-800 mr-1">Alerta de inventario:</span>
+                <div id="alert-chips" class="flex flex-wrap gap-2"></div>
+            </div>
+
+            <div class="flex justify-between items-center mb-6">
+                <div>
+                    <h2 class="text-3xl font-bold text-stone-900 font-serif">Inventario en Tiempo Real</h2>
+                    <p class="text-sm text-stone-500">Agrega, edita el stock o elimina productos.</p>
+                </div>
+                <button onclick="openModal('modal-add-product')" class="bg-[#8A2A2B] text-white px-6 py-3 rounded-xl font-bold text-sm hover:bg-[#6D2122] transition-colors flex items-center gap-2 shadow-md">
+                    <i data-lucide="plus" class="w-4 h-4"></i> Nuevo Producto
+                </button>
+            </div>
+            <div class="admin-card p-0">
+                <table class="w-full text-left border-collapse">
+                    <thead><tr class="bg-stone-50 text-stone-500 text-xs uppercase border-b">
+                        <th class="p-4">Producto</th><th class="p-4">Categoría</th><th class="p-4">Precio</th>
+                        <th class="p-4 text-center">Stock</th><th class="p-4 text-center">Estado</th><th class="p-4 text-right">Acciones</th>
+                    </tr></thead>
+                    <tbody id="products-table-body" class="divide-y divide-stone-100 text-sm"></tbody>
+                </table>
+            </div>
+        </section>
+
+        <!-- ============ REPORTES ============ -->
+        <section id="view-reports" class="hidden">
+            <div class="mb-6">
+                <h2 class="text-3xl font-bold text-stone-900 font-serif">Reportes de Venta</h2>
+                <p class="text-sm text-stone-500">Analiza ventas por rango de fechas.</p>
+            </div>
+
+            <div class="admin-card mb-6">
+                <div class="flex flex-wrap items-end gap-3">
+                    <div>
+                        <label class="block text-xs font-bold text-stone-600 mb-1">Desde</label>
+                        <input type="date" id="report-from" class="form-input" style="width:auto">
+                    </div>
+                    <div>
+                        <label class="block text-xs font-bold text-stone-600 mb-1">Hasta</label>
+                        <input type="date" id="report-to" class="form-input" style="width:auto">
+                    </div>
+                    <button onclick="generateReport()" class="bg-[#8A2A2B] text-white px-5 py-3 rounded-xl font-bold text-sm hover:bg-[#6D2122] transition-colors flex items-center gap-2">
+                        <i data-lucide="search" class="w-4 h-4"></i> Generar
+                    </button>
+                    <button onclick="setQuick('today')" class="px-4 py-3 bg-stone-100 text-stone-700 rounded-xl font-bold text-sm hover:bg-stone-200 transition-colors">Hoy</button>
+                    <button onclick="setQuick('week')" class="px-4 py-3 bg-stone-100 text-stone-700 rounded-xl font-bold text-sm hover:bg-stone-200 transition-colors">Esta semana</button>
+                    <button onclick="setQuick('month')" class="px-4 py-3 bg-stone-100 text-stone-700 rounded-xl font-bold text-sm hover:bg-stone-200 transition-colors">Este mes</button>
+                </div>
+            </div>
+
+            <div id="report-kpis" class="grid grid-cols-4 gap-4 mb-6 hidden">
+                <div class="stat-card"><p class="text-xs font-bold text-stone-500 uppercase">Total Vendido</p><div class="stat-val text-[#8A2A2B]" id="kpi-total">$0</div></div>
+                <div class="stat-card"><p class="text-xs font-bold text-stone-500 uppercase">Pedidos</p><div class="stat-val text-stone-900" id="kpi-orders">0</div></div>
+                <div class="stat-card"><p class="text-xs font-bold text-stone-500 uppercase">Ticket Promedio</p><div class="stat-val text-stone-900" id="kpi-avg">$0</div></div>
+                <div class="stat-card"><p class="text-xs font-bold text-stone-500 uppercase">Unidades</p><div class="stat-val text-stone-900" id="kpi-units">0</div></div>
+            </div>
+
+            <div id="report-charts" class="grid grid-cols-2 gap-6 mb-6 hidden">
+                <div class="admin-card">
+                    <h3 class="font-bold text-stone-800 mb-4 flex items-center gap-2"><i data-lucide="trending-up" class="w-4 h-4 text-[#8A2A2B]"></i> Ventas por Día</h3>
+                    <div class="chart-box"><canvas id="chart-day"></canvas></div>
+                </div>
+                <div class="admin-card">
+                    <h3 class="font-bold text-stone-800 mb-4 flex items-center gap-2"><i data-lucide="pie-chart" class="w-4 h-4 text-[#8A2A2B]"></i> Por Categoría</h3>
+                    <div class="chart-box"><canvas id="chart-cat"></canvas></div>
+                </div>
+            </div>
+
+            <div id="report-top" class="admin-card hidden">
+                <h3 class="font-bold text-stone-800 mb-4 flex items-center gap-2"><i data-lucide="trophy" class="w-4 h-4 text-amber-500"></i> Ranking de Productos</h3>
+                <table class="w-full text-left border-collapse">
+                    <thead><tr class="bg-stone-50 text-stone-500 text-xs uppercase border-b">
+                        <th class="p-3">#</th><th class="p-3">Producto</th><th class="p-3">Categoría</th>
+                        <th class="p-3 text-center">Unidades</th><th class="p-3 text-right">Total $</th>
+                    </tr></thead>
+                    <tbody id="top-body" class="divide-y divide-stone-100 text-sm"></tbody>
+                </table>
+            </div>
+
+            <div id="report-empty" class="text-center py-16 text-stone-400 hidden">
+                <i data-lucide="bar-chart-2" class="w-12 h-12 mx-auto mb-3 opacity-30"></i>
+                <p class="font-medium">No hay ventas en ese periodo.</p>
+            </div>
+        </section>
+
+        <!-- ============ FLUJO DE PRODUCTO ============ -->
+        <section id="view-flow" class="hidden">
+            <div class="mb-6">
+                <h2 class="text-3xl font-bold text-stone-900 font-serif">Flujo de Producto</h2>
+                <p class="text-sm text-stone-500">Historial de entradas, salidas y ventas por producto.</p>
+            </div>
+            <div class="grid grid-cols-3 gap-6">
+                <div class="col-span-1">
+                    <div class="admin-card p-0">
+                        <div class="p-3 border-b border-stone-100">
+                            <input type="text" id="flow-search" oninput="renderFlowList()" placeholder="Buscar producto..." class="form-input" style="padding:10px 14px;font-size:13px;">
+                        </div>
+                        <div id="flow-list" class="divide-y divide-stone-100 max-h-[500px] overflow-y-auto"></div>
+                    </div>
+                </div>
+                <div class="col-span-2">
+                    <div id="flow-detail" class="admin-card min-h-[300px]">
+                        <div class="text-center py-12 text-stone-400">
+                            <i data-lucide="mouse-pointer-click" class="w-10 h-10 mx-auto mb-3 opacity-30"></i>
+                            <p class="font-medium">Selecciona un producto para ver su flujo</p>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </section>
+
+        <!-- ============ RESEÑAS ============ -->
+        <section id="view-reviews" class="hidden">
+            <h2 class="text-3xl font-bold text-stone-900 font-serif mb-8">Gestión de Reseñas</h2>
+            <div id="reviews-container" class="grid grid-cols-1 gap-4"></div>
+        </section>
+
+        <!-- ============ USUARIOS ============ -->
+        <section id="view-users" class="hidden">
+            <div class="flex justify-between items-center mb-8">
+                <div>
+                    <h2 class="text-3xl font-bold text-stone-900 font-serif mb-2">Cuentas y Seguridad</h2>
+                    <p class="text-sm text-stone-500">Gestiona el personal y sus accesos.</p>
+                </div>
+                <button onclick="openModal('modal-add-user')" class="bg-[#8A2A2B] text-white px-6 py-3 rounded-xl font-bold text-sm hover:bg-[#6D2122] transition-colors flex items-center gap-2 shadow-md">
+                    <i data-lucide="user-plus" class="w-4 h-4"></i> Nuevo Empleado
+                </button>
+            </div>
+            <div class="admin-card p-0">
+                <table class="w-full text-left border-collapse">
+                    <thead><tr class="bg-stone-50 text-stone-500 text-xs uppercase border-b">
+                        <th class="p-4">Nombre</th><th class="p-4">Correo</th><th class="p-4">Contraseña</th>
+                        <th class="p-4">Rol</th><th class="p-4 text-right">Acciones</th>
+                    </tr></thead>
+                    <tbody id="users-table-body" class="divide-y divide-stone-100 text-sm"></tbody>
+                </table>
+            </div>
+        </section>
+
+        <!-- ============ CONFIGURACIÓN ============ -->
+        <section id="view-settings" class="hidden">
+            <h2 class="text-3xl font-bold text-stone-900 font-serif mb-8">Seguridad de la Cuenta</h2>
+            <div class="admin-card max-w-md">
+                <h3 class="text-lg font-bold text-stone-800 mb-2">Cambiar Mi Contraseña</h3>
+                <form onsubmit="event.preventDefault(); handleChangePassword();" class="space-y-4">
+                    <div><label class="block text-xs font-bold text-stone-600 mb-1">Contraseña Actual</label><input type="password" id="current-password" required class="form-input"></div>
+                    <div><label class="block text-xs font-bold text-stone-600 mb-1">Nueva Contraseña</label><input type="password" id="new-password" required class="form-input"></div>
+                    <div><label class="block text-xs font-bold text-stone-600 mb-1">Confirmar Nueva Contraseña</label><input type="password" id="confirm-password" required class="form-input"></div>
+                    <button type="submit" class="w-full bg-[#8A2A2B] text-white py-3 rounded-xl font-bold mt-4 hover:bg-[#6D2122]">Actualizar Contraseña</button>
+                </form>
+            </div>
+        </section>
+    </main>
+</div>
+
+<!-- MODALES -->
+<div id="modal-add-product" class="modal-overlay" onclick="if(event.target===this) closeModal('modal-add-product')">
+    <div class="modal-content">
+        <div class="flex justify-between items-center mb-6"><h3 class="text-2xl font-serif font-bold">Nuevo Producto</h3><button type="button" onclick="closeModal('modal-add-product')" class="text-stone-400 hover:text-stone-900"><i data-lucide="x"></i></button></div>
+        <form id="form-add-product" onsubmit="event.preventDefault(); handleAddProduct();" class="space-y-4">
+            <div><label class="block text-xs font-bold text-stone-600 mb-1">Nombre</label><input type="text" id="new-prod-name" required class="form-input" placeholder="Nombre del producto"></div>
+            <div class="grid grid-cols-2 gap-4">
+                <div><label class="block text-xs font-bold text-stone-600 mb-1">Categoría</label><select id="new-prod-cat" class="form-input"><option>Pasteles</option><option>Bebidas</option><option>Galletas</option><option>Pan Dulce</option><option>Postres</option><option>Chocolates</option></select></div>
+                <div><label class="block text-xs font-bold text-stone-600 mb-1">Precio ($)</label><input type="number" id="new-prod-price" required class="form-input" placeholder="0.00" min="1"></div>
+            </div>
+            <div class="grid grid-cols-2 gap-4">
+                <div><label class="block text-xs font-bold text-stone-600 mb-1">Stock Inicial</label><input type="number" id="new-prod-stock" required class="form-input" placeholder="0" min="0"></div>
+                <div class="space-y-2">
+                    <label class="block text-xs font-bold text-stone-600 mb-1">Foto del Producto</label>
+                    <input type="file" id="new-prod-file" accept="image/*" onchange="previewImg(this,'new-prod-preview')" class="w-full text-sm text-stone-500 file:mr-4 file:py-2.5 file:px-4 file:rounded-xl file:border-0 file:text-xs file:font-bold file:bg-[#8A2A2B]/10 file:text-[#8A2A2B] hover:file:bg-[#8A2A2B]/20 cursor-pointer bg-stone-50 rounded-xl border border-stone-200">
+                    <p class="text-xs text-stone-400 text-center">— o pega una URL —</p>
+                    <input type="text" id="new-prod-img-url" class="form-input text-sm" placeholder="https://ejemplo.com/foto.jpg" oninput="previewUrl(this,'new-prod-preview')">
+                    <img id="new-prod-preview" src="" class="hidden w-full h-40 object-cover rounded-xl border border-stone-200 mt-2">
+                </div>
+            </div>
+            <div><label class="block text-xs font-bold text-stone-600 mb-1">Descripción</label><textarea id="new-prod-desc" required class="form-input" rows="2" placeholder="Detalles..."></textarea></div>
+            <button type="submit" class="w-full bg-[#8A2A2B] text-white py-3 rounded-xl font-bold mt-4 shadow-md">Guardar Producto</button>
+        </form>
+    </div>
+</div>
+
+<div id="modal-add-user" class="modal-overlay" onclick="if(event.target===this) closeModal('modal-add-user')">
+    <div class="modal-content">
+        <div class="flex justify-between items-center mb-6"><h3 class="text-2xl font-serif font-bold">Nuevo Empleado / Repartidor</h3><button type="button" onclick="closeModal('modal-add-user')" class="text-stone-400 hover:text-stone-900"><i data-lucide="x"></i></button></div>
+        <form id="form-add-user" onsubmit="event.preventDefault(); handleAddUser();" class="space-y-4">
+            <div><label class="block text-xs font-bold text-stone-600 mb-1">Nombre Completo</label><input type="text" id="new-user-name" required class="form-input" placeholder="Nombre completo"></div>
+            <div><label class="block text-xs font-bold text-stone-600 mb-1">Correo Electrónico</label><input type="email" id="new-user-email" required class="form-input" placeholder="correo@empresa.com"></div>
+            <div class="grid grid-cols-2 gap-4">
+                <div><label class="block text-xs font-bold text-stone-600 mb-1">Contraseña</label><input type="text" id="new-user-pass" required class="form-input" placeholder="Contraseña"></div>
+                <div><label class="block text-xs font-bold text-stone-600 mb-1">Rol</label><select id="new-user-role" class="form-input"><option value="employee">Empleado (Cocina)</option><option value="driver">Repartidor</option><option value="admin">Administrador</option></select></div>
+            </div>
+            <button type="submit" class="w-full bg-[#8A2A2B] text-white py-3 rounded-xl font-bold mt-4 shadow-md">Registrar Usuario</button>
+        </form>
+    </div>
+</div>
+
+<div id="modal-respond-review" class="modal-overlay" onclick="if(event.target===this) closeModal('modal-respond-review')">
+    <div class="modal-content">
+        <div class="flex justify-between items-center mb-4"><h3 class="text-xl font-serif font-bold">Responder al Cliente</h3><button type="button" onclick="closeModal('modal-respond-review')" class="text-stone-400 hover:text-stone-900"><i data-lucide="x"></i></button></div>
+        <div class="bg-stone-50 p-4 rounded-lg mb-4 border border-stone-200"><p id="review-preview-text" class="text-sm text-stone-600 italic"></p></div>
+        <form onsubmit="event.preventDefault(); handleRespondReview();">
+            <input type="hidden" id="respond-review-id">
+            <textarea id="respond-text" rows="4" required class="form-input mb-4" placeholder="Escribe la respuesta pública..."></textarea>
+            <button type="submit" class="w-full bg-stone-900 text-white py-3 rounded-xl font-bold shadow-md">Publicar Respuesta</button>
+        </form>
+    </div>
+</div>
+
+<div id="modal-change-emp-password" class="modal-overlay" onclick="if(event.target===this) closeModal('modal-change-emp-password')">
+    <div class="modal-content">
+        <div class="flex justify-between items-center mb-4"><h3 class="text-xl font-serif font-bold">Cambiar Contraseña</h3><button type="button" onclick="closeModal('modal-change-emp-password')" class="text-stone-400 hover:text-stone-900"><i data-lucide="x"></i></button></div>
+        <form onsubmit="event.preventDefault(); handleEmpPasswordSubmit();">
+            <input type="hidden" id="emp-pass-user-id">
+            <label class="block text-xs font-bold text-stone-600 mb-1">Nueva Contraseña del Empleado</label>
+            <input type="text" id="emp-new-pass-input" required class="form-input mb-4" placeholder="Escribe la nueva contraseña...">
+            <button type="submit" class="w-full bg-stone-900 text-white py-3 rounded-xl font-bold shadow-md hover:bg-black">Guardar Contraseña</button>
+        </form>
+    </div>
+</div>
+
+<div id="toast" class="fixed bottom-6 right-6 bg-stone-900 text-white px-6 py-3 rounded-xl text-sm font-medium shadow-2xl transition-all opacity-0 translate-y-10 z-[3000]">Mensaje</div>
+
+<script>
+    const LOW = 5; // umbral stock bajo
+    let currentUser = JSON.parse(sessionStorage.getItem('admin_session')) || null;
+    let chartDay = null, chartCat = null, selectedFlowId = null;
+
+    // ======== AUTH ========
+    async function handleLogin() {
+        const email = document.getElementById('login-email').value;
+        const pass  = document.getElementById('login-pass').value;
+        try {
+            const res = await fetch('/api/login', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ email, password: pass, role: 'admin' })
+            });
+            if (!res.ok) { showToast('Correo o contraseña incorrectos.'); return; }
+            const user = await res.json();
+            currentUser = user;
+            sessionStorage.setItem('admin_session', JSON.stringify(user));
+            document.getElementById('login-view').classList.remove('active');
+            document.getElementById('admin-view').classList.add('active');
+            document.getElementById('login-email').value = '';
+            document.getElementById('login-pass').value = '';
+            renderAdminUI();
+            initReportDates();
+            showToast(`¡Bienvenido, ${user.name}!`);
+        } catch(e) {
+            showToast('Error al conectar con el servidor.');
+        }
+    }
+
+    function logout() {
+        if (!confirm('¿Cerrar sesión de administrador?')) return;
+        currentUser = null;
+        sessionStorage.removeItem('admin_session');
+        document.querySelectorAll('.page-view').forEach(el => el.classList.remove('active'));
+        document.getElementById('login-view').classList.add('active');
+    }
+
+    function handleChangePassword() {
+        if (!currentUser) return;
+        const cur  = document.getElementById('current-password').value;
+        const nw   = document.getElementById('new-password').value;
+        const conf = document.getElementById('confirm-password').value;
+        if (cur !== currentUser.password) return showToast('Contraseña actual incorrecta.');
+        if (nw !== conf) return showToast('Las contraseñas nuevas no coinciden.');
+        if (nw.length < 3) return showToast('Contraseña muy corta.');
+        window.DB.updateUserPassword(currentUser.id, nw);
+        currentUser.password = nw;
+        sessionStorage.setItem('admin_session', JSON.stringify(currentUser));
+        ['current-password','new-password','confirm-password'].forEach(id => document.getElementById(id).value='');
+        showToast('¡Contraseña actualizada!');
+    }
+
+    // ======== TABS ========
+    async function switchTab(id) {
+        ['products','reports','flow','reviews','users','settings','orders'].forEach(t => {
+            document.getElementById(`view-${t}`).classList.add('hidden');
+            document.getElementById(`tab-${t}`).classList.remove('active');
+        });
+        document.getElementById(`view-${id}`).classList.remove('hidden');
+        if (id === 'orders') cargarPedidosAdmin();
+        document.getElementById(`tab-${id}`).classList.add('active');
+        if (id === 'flow') { await renderProducts(); renderFlowList(); }
+        if (id === 'reports') initReportDates();
+    }
+
+    async function renderAdminUI() {
+        await renderProducts();
+        renderReviews();
+        renderUsers();
+        // Refrescar flujo si hay un producto seleccionado
+        if (selectedFlowId !== null) {
+            renderFlowList();
+            showFlowDetail(selectedFlowId);
+        }
+    }
+
+    // ======== ALERTA STOCK ========
+    function renderStockAlert() {
+        const low = productosCache.filter(p => p.stock <= LOW);
+        const bar  = document.getElementById('stock-alert-bar');
+        const chips = document.getElementById('alert-chips');
+        chips.innerHTML = '';
+        if (low.length === 0) { bar.classList.remove('visible'); return; }
+        bar.classList.add('visible');
+        low.forEach(p => {
+            const cls  = p.stock === 0 ? 'chip-out' : 'chip-low';
+            const icon = p.stock === 0 ? '🚫' : '⚠️';
+            const lbl  = p.stock === 0 ? 'AGOTADO' : `${p.stock} restantes`;
+            chips.insertAdjacentHTML('beforeend', `<span class="alert-chip ${cls}">${icon} ${p.name} <span style="font-weight:400;opacity:.7">(${lbl})</span></span>`);
+        });
+        lucide.createIcons();
+    }
+
+    // ======== INVENTARIO ========
+    let productosCache = [];
+
+    async function renderProducts() {
+        const tbody = document.getElementById('products-table-body');
+        tbody.innerHTML = '<tr><td colspan="6" class="p-8 text-center text-stone-400">Cargando productos...</td></tr>';
+        try {
+            const res = await fetch('/api/productos');
+            productosCache = await res.json();
+        } catch(e) {
+            tbody.innerHTML = '<tr><td colspan="6" class="p-8 text-center text-red-400">Error al cargar productos.</td></tr>';
+            return;
+        }
+        tbody.innerHTML = '';
+        productosCache.forEach(p => {
+            let badge, color;
+            if (p.stock === 0) {
+                badge = '<span class="px-2 py-1 rounded-lg text-xs font-bold bg-red-100 text-red-700">Agotado</span>';
+                color = 'text-red-600 font-bold';
+            } else if (p.stock <= LOW) {
+                badge = '<span class="px-2 py-1 rounded-lg text-xs font-bold bg-amber-100 text-amber-700">⚠ Bajo</span>';
+                color = 'text-amber-600 font-bold';
+            } else {
+                badge = '<span class="px-2 py-1 rounded-lg text-xs font-bold bg-green-100 text-green-700">OK</span>';
+                color = 'text-green-600';
+            }
+            tbody.insertAdjacentHTML('beforeend', `
+                <tr class="hover:bg-stone-50 transition-colors">
+                    <td class="p-4"><div class="flex items-center gap-3"><img src="${p.img}" class="w-10 h-10 rounded-lg object-cover border border-stone-100"><span class="font-bold">${p.name}</span></div></td>
+                    <td class="p-4 text-stone-600">${p.category}</td>
+                    <td class="p-4 font-medium">$${parseFloat(p.price).toFixed(2)}</td>
+                    <td class="p-4"><div class="flex items-center justify-center gap-2">
+                        <button onclick="updateStock(${p.id},-1)" class="w-6 h-6 bg-stone-100 rounded hover:bg-stone-200 font-bold">-</button>
+                        <span class="w-8 text-center ${color}">${p.stock}</span>
+                        <button onclick="updateStock(${p.id},1)" class="w-6 h-6 bg-stone-100 rounded hover:bg-stone-200 font-bold">+</button>
+                    </div></td>
+                    <td class="p-4 text-center">${badge}</td>
+                    <td class="p-4 text-right flex items-center justify-end gap-2">
+                        <button onclick="abrirEditarProducto(${p.id})" class="text-stone-400 hover:text-[#8A2A2B] transition-colors" title="Editar"><i data-lucide="pencil" class="w-5 h-5"></i></button>
+                        <button onclick="deleteProduct(${p.id})" class="text-stone-400 hover:text-red-600 transition-colors" title="Eliminar"><i data-lucide="trash-2" class="w-5 h-5"></i></button>
+                    </td>
+                </tr>
+            `);
+        });
+        renderStockAlert();
+        lucide.createIcons();
+    }
+
+    async function updateStock(id, change) {
+        const p = productosCache.find(x => x.id === id);
+        if (!p) return;
+        const nuevoStock = Math.max(0, (p.stock || 0) + change);
+        try {
+            await fetch(`/api/productos/${id}`, {
+                method: 'PUT',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ ...p, stock: nuevoStock })
+            });
+            // Registrar movimiento en historial de sesión
+            stockHistoryLocal.push({
+                id: Date.now(),
+                productId: id,
+                productName: p.name,
+                change,
+                prevStock: p.stock,
+                newStock: nuevoStock,
+                reason: change > 0 ? 'Reposición manual' : 'Ajuste manual',
+                date: new Date().toISOString()
+            });
+            showToast('Stock modificado');
+            renderProducts();
+        } catch(e) { showToast('Error al modificar stock'); }
+    }
+
+    async function deleteProduct(id) {
+        if (!confirm('¿Eliminar este producto?')) return;
+        try {
+            await fetch(`/api/productos/${id}`, { method: 'DELETE' });
+            showToast('Producto eliminado');
+            renderProducts();
+        } catch(e) { showToast('Error al eliminar producto'); }
+    }
+
+
+    // ======== PREVIEW DE IMÁGENES ========
+    function previewImg(input, previewId) {
+        const preview = document.getElementById(previewId);
+        if (input.files && input.files[0]) {
+            const reader = new FileReader();
+            reader.onload = e => { preview.src = e.target.result; preview.classList.remove('hidden'); };
+            reader.readAsDataURL(input.files[0]);
+        }
+    }
+    function previewUrl(input, previewId) {
+        const preview = document.getElementById(previewId);
+        if (input.value) { preview.src = input.value; preview.classList.remove('hidden'); }
+    }
+
+    // ======== EDITAR PRODUCTO ========
+    function abrirEditarProducto(id) {
+        const p = productosCache.find(x => x.id === id);
+        if (!p) return;
+        document.getElementById('edit-prod-id').value    = p.id;
+        document.getElementById('edit-prod-name').value  = p.name;
+        document.getElementById('edit-prod-cat').value   = p.category;
+        document.getElementById('edit-prod-price').value = p.price;
+        document.getElementById('edit-prod-stock').value = p.stock;
+        document.getElementById('edit-prod-desc').value  = p.description || p.desc || '';
+        document.getElementById('edit-prod-img-url').value = p.img || '';
+        document.getElementById('edit-prod-preview').src = p.img || '';
+        document.getElementById('edit-prod-preview').classList.toggle('hidden', !p.img);
+        openModal('modal-edit-product');
+    }
+
+    async function handleEditProduct() {
+        const id    = document.getElementById('edit-prod-id').value;
+        const name  = document.getElementById('edit-prod-name').value.trim();
+        const cat   = document.getElementById('edit-prod-cat').value;
+        const price = parseFloat(document.getElementById('edit-prod-price').value);
+        const stock = parseInt(document.getElementById('edit-prod-stock').value);
+        const desc  = document.getElementById('edit-prod-desc').value.trim();
+        const file  = document.getElementById('edit-prod-file').files[0];
+        const imgUrl = document.getElementById('edit-prod-img-url').value;
+
+        if (!name || isNaN(price) || isNaN(stock)) return showToast('Completa todos los campos.');
+
+        const guardar = async (imgFinal) => {
+            try {
+                await fetch(`/api/productos/${id}`, {
+                    method: 'PUT',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ name, category: cat, description: desc, price, stock, img: imgFinal })
+                });
+                closeModal('modal-edit-product');
+                showToast('✅ Producto actualizado');
+                renderProducts();
+            } catch(e) { showToast('Error al guardar cambios'); }
+        };
+
+        if (file) {
+            // Si subió nueva foto, convertir a base64
+            const reader = new FileReader();
+            reader.onload = e => guardar(e.target.result);
+            reader.readAsDataURL(file);
+        } else {
+            guardar(imgUrl);
+        }
+    }
+
+    function handleAddProduct() {
+        const file = document.getElementById('new-prod-file').files[0];
+        const imgUrl = document.getElementById('new-prod-img-url')?.value || '';
+        const name  = document.getElementById('new-prod-name').value.trim();
+        const cat   = document.getElementById('new-prod-cat').value;
+        const price = parseFloat(document.getElementById('new-prod-price').value);
+        const stock = parseInt(document.getElementById('new-prod-stock').value);
+        const desc  = document.getElementById('new-prod-desc').value.trim();
+
+        const guardar = async (imgFinal) => {
+            try {
+                await fetch('/api/productos', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ name, category: cat, description: desc, price, stock, img: imgFinal })
+                });
+                closeModal('modal-add-product');
+                document.getElementById('form-add-product').reset();
+                document.getElementById('new-prod-preview').classList.add('hidden');
+                showToast('Producto añadido.');
+                renderProducts();
+            } catch(e) { showToast('Error al agregar producto'); }
+        };
+
+        if (file) {
+            const reader = new FileReader();
+            reader.onload = e => guardar(e.target.result);
+            reader.readAsDataURL(file);
+        } else if (imgUrl) {
+            guardar(imgUrl);
+        } else {
+            showToast('Agrega una foto o URL de imagen.');
+        }
+    }
+
+    // ======== RESEÑAS ========
+    function renderReviews() {
+        const c = document.getElementById('reviews-container'); c.innerHTML = '';
+        const rv = window.DB.getReviews();
+        if (!rv.length) { c.innerHTML = '<p class="text-stone-500">No hay reseñas.</p>'; return; }
+        rv.forEach(r => {
+            let stars = '';
+            for (let i=0; i<5; i++) stars += `<span style="color:${i<Number(r.stars)?'#FACC15':'#D1D5DB'};font-size:18px;">★</span>`;
+            const resp = r.response ? `<div class="mt-4 bg-[#FAF7F4] p-3 rounded-xl border border-stone-200"><span class="text-[10px] uppercase font-bold text-[#8A2A2B]">Respuesta:</span><p class="text-sm mt-1">${r.response}</p></div>` : '';
+            const btn  = !r.response ? `<button onclick="openRespondModal(${r.id})" class="text-sm font-bold text-[#8A2A2B] hover:underline">Responder</button>` : '<div></div>';
+            c.insertAdjacentHTML('beforeend', `
+                <div class="admin-card">
+                    <div class="flex justify-between items-start mb-3"><div><span class="font-bold">${r.user}</span><span class="text-stone-500 text-sm ml-2">${r.productName||''}</span><div class="flex mt-1">${stars}</div></div><span class="text-xs text-stone-400">${r.date}</span></div>
+                    <p class="text-sm italic text-stone-700">"${r.text}"</p>
+                    ${resp}
+                    <div class="mt-4 pt-4 border-t border-stone-100 flex justify-between items-center">${btn}<button onclick="deleteReview(${r.id})" class="text-sm text-stone-400 hover:text-red-600 flex items-center gap-1"><i data-lucide="trash" class="w-4 h-4"></i> Eliminar</button></div>
+                </div>
+            `);
+        });
+        lucide.createIcons();
+    }
+
+    function openRespondModal(id) {
+        const r = window.DB.getReviews().find(x => Number(x.id)===Number(id));
+        if (!r) return;
+        document.getElementById('respond-review-id').value = r.id;
+        document.getElementById('review-preview-text').innerText = `"${r.text}"`;
+        openModal('modal-respond-review');
+    }
+
+    function handleRespondReview() {
+        const id   = Number(document.getElementById('respond-review-id').value);
+        const text = document.getElementById('respond-text').value;
+        if (!id) return showToast('Error: ID no válido');
+        window.DB.updateReviewResponse(id, text);
+        document.getElementById('respond-text').value = '';
+        closeModal('modal-respond-review');
+        showToast('Respuesta publicada');
+        renderReviews();
+    }
+
+    function deleteReview(id) { if (confirm('¿Borrar reseña?')) { window.DB.deleteReview(Number(id)); showToast('Reseña borrada'); renderReviews(); } }
+
+    // ======== USUARIOS ========
+    function renderUsers() {
+        const tbody = document.getElementById('users-table-body'); tbody.innerHTML = '';
+        window.DB.getUsers().forEach(u => {
+            const isAdm    = u.role==='admin';
+            const isEmp    = u.role==='employee';
+            const isDriver = u.role==='driver'||u.role==='repartidor';
+            const passStr  = (isEmp||isDriver||isAdm) ? `<span class="font-mono bg-stone-100 px-2 py-1 rounded text-stone-600 font-bold border border-stone-200">${u.password}</span>` : `<span class="text-stone-400 italic">Oculta</span>`;
+            let roleBadge = isAdm ? '<span class="px-2 py-1 rounded text-xs font-bold bg-red-100 text-red-800">Admin</span>' : isEmp ? '<span class="px-2 py-1 rounded text-xs font-bold bg-blue-100 text-blue-800">Empleado</span>' : isDriver ? '<span class="px-2 py-1 rounded text-xs font-bold bg-green-100 text-green-800">Repartidor</span>' : '<span class="px-2 py-1 rounded text-xs font-bold bg-stone-100 text-stone-600">Cliente</span>';
+            tbody.insertAdjacentHTML('beforeend', `
+                <tr>
+                    <td class="p-4 font-bold"><div class="flex items-center gap-3"><div class="w-8 h-8 rounded-full bg-stone-200 flex items-center justify-center text-xs">${u.name.charAt(0).toUpperCase()}</div>${u.name}</div></td>
+                    <td class="p-4">${u.email}</td>
+                    <td class="p-4">${passStr}</td>
+                    <td class="p-4">${roleBadge}</td>
+                    <td class="p-4 text-right">${!isAdm ? `${(isEmp||isDriver)?`<button onclick="openChangeEmpPasswordModal(${u.id})" class="text-stone-400 hover:text-blue-600 mr-2" title="Cambiar contraseña"><i data-lucide="key" class="w-5 h-5"></i></button>`:''}
+                    <button onclick="deleteUser(${u.id})" class="text-stone-400 hover:text-red-600" title="Eliminar"><i data-lucide="user-x" class="w-5 h-5"></i></button>` : ''}</td>
+                </tr>
+            `);
+        });
+        lucide.createIcons();
+    }
+
+    function handleAddUser() {
+        const name  = document.getElementById('new-user-name').value;
+        const email = document.getElementById('new-user-email').value;
+        const pass  = document.getElementById('new-user-pass').value;
+        const role  = document.getElementById('new-user-role').value;
+        if (window.DB.getUsers().find(u => u.email===email)) return showToast('Ese correo ya está registrado.');
+        window.DB.addUser({ id: Date.now(), name, email, password: pass, role });
+        closeModal('modal-add-user');
+        document.getElementById('form-add-user').reset();
+        showToast('Personal registrado.');
+        renderUsers();
+    }
+
+    function deleteUser(id) { if (confirm('¿Eliminar cuenta?')) { window.DB.deleteUser(Number(id)); showToast('Usuario eliminado'); renderUsers(); } }
+
+    function openChangeEmpPasswordModal(id) {
+        document.getElementById('emp-pass-user-id').value = id;
+        document.getElementById('emp-new-pass-input').value = '';
+        openModal('modal-change-emp-password');
+    }
+
+    function handleEmpPasswordSubmit() {
+        const id  = Number(document.getElementById('emp-pass-user-id').value);
+        const pw  = document.getElementById('emp-new-pass-input').value;
+        if (pw.length < 3) return showToast('Contraseña muy corta.');
+        if (window.DB.updateUserPassword(id, pw)) { showToast('Contraseña actualizada'); closeModal('modal-change-emp-password'); renderUsers(); }
+        else showToast('Error al actualizar');
+    }
+
+    // ======== REPORTES ========
+    function initReportDates() {
+        const today = new Date();
+        const first = new Date(today.getFullYear(), today.getMonth(), 1);
+        document.getElementById('report-from').value = localDateStr(first);
+        document.getElementById('report-to').value   = localDateStr(today);
+    }
+
+    function setQuick(range) {
+        const today = new Date();
+        let from = new Date(today);
+        if (range === 'week')  from.setDate(today.getDate() - 6);
+        if (range === 'month') from = new Date(today.getFullYear(), today.getMonth(), 1);
+        document.getElementById('report-from').value = localDateStr(from);
+        document.getElementById('report-to').value   = localDateStr(today);
+        generateReport();
+    }
+
+    // Fecha local como YYYY-MM-DD (evita desfase UTC)
+    function localDateStr(date) {
+        const y = date.getFullYear();
+        const m = String(date.getMonth() + 1).padStart(2, '0');
+        const d = String(date.getDate()).padStart(2, '0');
+        return `${y}-${m}-${d}`;
+    }
+
+    async function generateReport() {
+        const fromStr = document.getElementById('report-from').value;
+        const toStr   = document.getElementById('report-to').value;
+        if (!fromStr || !toStr) return showToast('Selecciona un rango de fechas.');
+
+        const from = new Date(fromStr + 'T00:00:00');
+        const to   = new Date(toStr   + 'T23:59:59');
+
+        const kpisEl  = document.getElementById('report-kpis');
+        const chartsEl= document.getElementById('report-charts');
+        const topEl   = document.getElementById('report-top');
+        const emptyEl = document.getElementById('report-empty');
+
+        kpisEl.classList.add('hidden'); chartsEl.classList.add('hidden');
+        topEl.classList.add('hidden');  emptyEl.classList.remove('hidden');
+        emptyEl.innerHTML = '<p class="font-medium text-stone-400">Cargando datos...</p>';
+
+        try {
+            const [resPedidos, resProductos] = await Promise.all([
+                fetch('/api/pedidos'),
+                fetch('/api/productos')
+            ]);
+            const todosLosPedidos = await resPedidos.json();
+            const products = await resProductos.json();
+
+            // Función para extraer YYYY-MM-DD de cualquier formato de fecha
+            const extraerDia = (o) => {
+                // 1. o.fecha: "6/6/2026, 10:30:00" (toLocaleString México) — parseo manual
+                if (o.fecha) {
+                    const match = o.fecha.match(/(\d+)\/(\d+)\/(\d+)/);
+                    if (match) {
+                        const d = String(match[1]).padStart(2,'0');
+                        const m = String(match[2]).padStart(2,'0');
+                        const y = match[3];
+                        return `${y}-${m}-${d}`;
+                    }
+                }
+                // 2. created_at: "2026-06-06 10:30:00" (MySQL UTC) — ajustar a hora local
+                if (o.created_at) {
+                    // Convertir a hora local sumando el offset
+                    const raw = o.created_at.toString().replace(' ', 'T') + 'Z'; // forzar UTC
+                    const dt = new Date(raw);
+                    if (!isNaN(dt)) {
+                        const y = dt.getFullYear();
+                        const m = String(dt.getMonth()+1).padStart(2,'0');
+                        const d = String(dt.getDate()).padStart(2,'0');
+                        return `${y}-${m}-${d}`;
+                    }
+                }
+                return '';
+            };
+
+            const orders = todosLosPedidos.filter(o => {
+                const diaStr = extraerDia(o);
+                return diaStr >= fromStr && diaStr <= toStr && o.status === 'Entregado';
+            });
+
+            if (orders.length === 0) {
+                emptyEl.innerHTML = '<i data-lucide="bar-chart-2" class="w-12 h-12 mx-auto mb-3 opacity-30"></i><p class="font-medium">No hay ventas entregadas en ese periodo.</p>';
+                lucide.createIcons();
+                return;
+            }
+
+            emptyEl.classList.add('hidden');
+            kpisEl.classList.remove('hidden'); chartsEl.classList.remove('hidden'); topEl.classList.remove('hidden');
+
+            // KPIs
+            const totalRev   = orders.reduce((s,o) => s + parseFloat(o.total||0), 0);
+            const totalUnits = orders.reduce((s,o) => {
+                const items = typeof o.items === 'string' ? JSON.parse(o.items) : (o.items||[]);
+                return s + items.reduce((si,i) => si + (i.quantity||i.qty||1), 0);
+            }, 0);
+            document.getElementById('kpi-total').textContent  = '$' + totalRev.toFixed(2);
+            document.getElementById('kpi-orders').textContent = orders.length;
+            document.getElementById('kpi-avg').textContent    = '$' + (totalRev/orders.length).toFixed(2);
+            document.getElementById('kpi-units').textContent  = totalUnits;
+
+            // Gráfica por día
+            const byDay = {};
+            orders.forEach(o => {
+                const diaStr = extraerDia(o);
+                byDay[diaStr] = (byDay[diaStr]||0) + parseFloat(o.total||0);
+            });
+            const sortedDays = Object.keys(byDay).sort();
+            const dayLabels  = sortedDays.map(d => { const parts = d.split('-'); return `${parts[2]||''}/${parts[1]||''}`; });
+
+            if (chartDay) chartDay.destroy();
+            chartDay = new Chart(document.getElementById('chart-day').getContext('2d'), {
+                type: 'bar',
+                data: { labels: dayLabels, datasets: [{ label: 'Ventas ($)', data: sortedDays.map(d => byDay[d]), backgroundColor: 'rgba(138,42,43,0.7)', borderColor: '#8A2A2B', borderWidth: 2, borderRadius: 8 }] },
+                options: { responsive: true, maintainAspectRatio: false, plugins: { legend: { display: false } }, scales: { y: { beginAtZero: true, grid: { color: '#f3f4f6' } }, x: { grid: { display: false } } } }
+            });
+
+            // Gráfica por categoría
+            const byCat = {};
+            orders.forEach(o => {
+                const items = typeof o.items === 'string' ? JSON.parse(o.items) : (o.items||[]);
+                items.forEach(item => {
+                    const prod = products.find(p => p.id === item.id || p.id === item.productId);
+                    const cat  = prod ? prod.category : 'Otro';
+                    byCat[cat] = (byCat[cat]||0) + (parseFloat(item.price||0) * (item.quantity||item.qty||1));
+                });
+            });
+            const colors = ['#8A2A2B','#C45252','#D97706','#059669','#2563EB','#7C3AED','#DB2777'];
+            if (chartCat) chartCat.destroy();
+            chartCat = new Chart(document.getElementById('chart-cat').getContext('2d'), {
+                type: 'doughnut',
+                data: { labels: Object.keys(byCat), datasets: [{ data: Object.values(byCat), backgroundColor: colors.slice(0,Object.keys(byCat).length), borderWidth: 3, borderColor: '#fff' }] },
+                options: { responsive: true, maintainAspectRatio: false, plugins: { legend: { position: 'bottom', labels: { padding: 12, font: { size: 12 } } } } }
+            });
+
+            // Top productos
+            const prodSales = {};
+            orders.forEach(o => {
+                const items = typeof o.items === 'string' ? JSON.parse(o.items) : (o.items||[]);
+                items.forEach(item => {
+                    const key = item.id || item.productId || item.name;
+                    if (!prodSales[key]) {
+                        const prod = products.find(p => p.id === item.id || p.id === item.productId);
+                        prodSales[key] = { name: item.name, category: prod ? prod.category : '—', units: 0, total: 0 };
+                    }
+                    prodSales[key].units += (item.quantity||item.qty||1);
+                    prodSales[key].total += parseFloat(item.price||0) * (item.quantity||item.qty||1);
+                });
+            });
+
+            const sorted = Object.values(prodSales).sort((a,b) => b.units - a.units);
+            const tbody  = document.getElementById('top-body');
+            tbody.innerHTML = '';
+            sorted.forEach((p,i) => {
+                const medal = i===0?'🥇':i===1?'🥈':i===2?'🥉':`#${i+1}`;
+                tbody.insertAdjacentHTML('beforeend', `
+                    <tr class="${i===0?'bg-amber-50':''}">
+                        <td class="p-3 text-lg">${medal}</td>
+                        <td class="p-3 font-bold">${p.name} ${i===0?'<span class="top-badge ml-2">★ Más vendido</span>':''}</td>
+                        <td class="p-3 text-stone-500">${p.category}</td>
+                        <td class="p-3 text-center font-bold">${p.units}</td>
+                        <td class="p-3 text-right font-bold text-[#8A2A2B]">$${p.total.toFixed(2)}</td>
+                    </tr>
+                `);
+            });
+            lucide.createIcons();
+
+        } catch(err) {
+            console.error('Error generando reporte:', err);
+            emptyEl.innerHTML = '<p class="font-medium text-red-400">Error al cargar datos del servidor.</p>';
+        }
+    }
+
+
+    // ======== FLUJO DE PRODUCTO ========
+    function renderFlowList() {
+        const q   = (document.getElementById('flow-search').value||'').toLowerCase();
+        const prods = productosCache.filter(p => p.name.toLowerCase().includes(q));
+        const list  = document.getElementById('flow-list');
+        list.innerHTML = '';
+        if (!prods.length) { list.innerHTML = '<p class="p-4 text-stone-400 text-sm">Sin resultados.</p>'; return; }
+        prods.forEach(p => {
+            const c = p.stock===0 ? 'text-red-600' : p.stock<=LOW ? 'text-amber-600' : 'text-green-600';
+            const sel = selectedFlowId === p.id;
+            list.insertAdjacentHTML('beforeend', `
+                <div onclick="showFlowDetail(${p.id})" class="p-4 flex items-center gap-3 cursor-pointer hover:bg-stone-50 transition-colors ${sel?'bg-[#8A2A2B]/5 border-l-4 border-[#8A2A2B]':''}">
+                    <img src="${p.img}" class="w-10 h-10 rounded-lg object-cover flex-shrink-0">
+                    <div class="flex-1 min-w-0">
+                        <p class="font-bold text-sm truncate">${p.name}</p>
+                        <p class="text-xs text-stone-500">${p.category}</p>
+                    </div>
+                    <span class="text-sm font-bold ${c} flex-shrink-0">${p.stock}</span>
+                </div>
+            `);
+        });
+    }
+
+    function showFlowDetail(productId) {
+        selectedFlowId = productId;
+        renderFlowList();
+
+        const products = productosCache;
+        const orders   = cachePedidos;
+        const history  = stockHistoryLocal;
+        const p = products.find(x => x.id===productId);
+        if (!p) return;
+
+        const events = [];
+
+        // Movimientos manuales de stock
+        history.filter(h => h.productId===productId).forEach(h => {
+            events.push({ type: h.change>0?'up':'down', date: new Date(h.date), label: h.reason, detail: `${h.change>0?'+':''}${h.change} uds (${h.prevStock} → ${h.newStock})` });
+        });
+
+        // Ventas (órdenes con este producto)
+        orders.forEach(o => {
+            const item = o.items && o.items.find(i => (i.productId ?? i.id) === productId);
+            if (item) {
+                const qty   = item.qty ?? item.quantity ?? 1;
+                const price = parseFloat(item.price) || 0;
+                const fecha = o.fecha ? new Date(o.created_at || o.date || o.fecha) : new Date(o.created_at || o.date);
+                events.push({ type: 'sale', date: fecha, label: `Venta · Pedido #${String(o.id).slice(-5)}`, detail: `-${qty} uds • $${(price*qty).toFixed(2)}`, status: o.status });
+            }
+        });
+
+        events.sort((a,b) => b.date - a.date);
+
+        const sales     = events.filter(e => e.type==='sale').length;
+        const restocked = history.filter(h => h.productId===productId && h.change>0).reduce((s,h) => s+h.change, 0);
+
+        const detail = document.getElementById('flow-detail');
+        const stockColor = p.stock===0?'text-red-600':p.stock<=LOW?'text-amber-600':'text-green-600';
+
+        detail.innerHTML = `
+            <div class="flex items-center gap-4 mb-5 pb-5 border-b border-stone-100">
+                <img src="${p.img}" class="w-14 h-14 rounded-2xl object-cover shadow">
+                <div class="flex-1">
+                    <h3 class="text-lg font-bold font-serif">${p.name}</h3>
+                    <p class="text-stone-500 text-sm">${p.category} · $${p.price.toFixed(2)}</p>
+                </div>
+                <div class="text-right">
+                    <p class="text-xs text-stone-500 uppercase font-bold mb-1">Stock Actual</p>
+                    <p class="text-3xl font-bold font-serif ${stockColor}">${p.stock}</p>
+                </div>
+            </div>
+
+            <div class="grid grid-cols-3 gap-3 mb-5">
+                <div class="bg-blue-50 rounded-xl p-3 text-center">
+                    <p class="text-xs text-blue-600 font-bold uppercase mb-1">Movimientos</p>
+                    <p class="text-2xl font-bold text-blue-800">${events.length}</p>
+                </div>
+                <div class="bg-green-50 rounded-xl p-3 text-center">
+                    <p class="text-xs text-green-600 font-bold uppercase mb-1">Reposiciones</p>
+                    <p class="text-2xl font-bold text-green-800">+${restocked}</p>
+                </div>
+                <div class="bg-[#8A2A2B]/5 rounded-xl p-3 text-center">
+                    <p class="text-xs text-[#8A2A2B] font-bold uppercase mb-1">Pedidos con este prod.</p>
+                    <p class="text-2xl font-bold text-[#8A2A2B]">${sales}</p>
+                </div>
+            </div>
+
+            <h4 class="font-bold text-stone-700 mb-3 flex items-center gap-2 text-sm uppercase tracking-wide">
+                <i data-lucide="clock" class="w-4 h-4"></i> Historial
+            </h4>
+
+            ${events.length===0 ? `<div class="text-center py-8 text-stone-400"><i data-lucide="inbox" class="w-8 h-8 mx-auto mb-2 opacity-30"></i><p>Sin movimientos registrados.</p></div>` : ''}
+
+            <div class="max-h-64 overflow-y-auto pr-1">
+                ${events.map(ev => {
+                    const dotClass = ev.type==='up'?'dot-up':ev.type==='down'?'dot-down':'dot-sale';
+                    const icon     = ev.type==='up'?'↑':ev.type==='down'?'↓':'🛒';
+                    const dateStr  = ev.date.toLocaleDateString('es-MX',{day:'2-digit',month:'short',year:'numeric',hour:'2-digit',minute:'2-digit'});
+                    const sb = ev.status==='cancelled'?'<span class="text-xs text-red-500 font-bold ml-1">(cancelado)</span>':ev.status==='pending'?'<span class="text-xs text-amber-500 font-bold ml-1">(pendiente)</span>':'';
+                    return `
+                        <div class="tl-item">
+                            <div class="tl-dot ${dotClass}">${icon}</div>
+                            <div class="bg-stone-50 rounded-xl p-3 border border-stone-100">
+                                <div class="flex justify-between items-start">
+                                    <p class="font-bold text-sm text-stone-800">${ev.label}${sb}</p>
+                                    <span class="text-xs text-stone-400 flex-shrink-0 ml-2">${dateStr}</span>
+                                </div>
+                                <p class="text-xs text-stone-500 mt-1">${ev.detail}</p>
+                            </div>
+                        </div>
+                    `;
+                }).join('')}
+            </div>
+        `;
+        lucide.createIcons();
+    }
+
+    // ======== UTILS ========
+    function openModal(id)  { const m=document.getElementById(id); if(m) m.classList.add('show'); }
+    function closeModal(id) { const m=document.getElementById(id); if(m) m.classList.remove('show'); }
+    function showToast(msg) {
+        const t = document.getElementById('toast');
+        t.innerText = msg;
+        t.classList.remove('opacity-0','translate-y-10');
+        setTimeout(() => t.classList.add('opacity-0','translate-y-10'), 3000);
+    }
+
+    window.addEventListener('storage',       e => { if(e.key===DB_KEY && currentUser) renderAdminUI(); });
+    window.addEventListener('local_db_update', () => { if(currentUser) renderAdminUI(); });
+
+    window.onload = () => {
+        lucide.createIcons();
+        if (currentUser) {
+            document.getElementById('login-view').classList.remove('active');
+            document.getElementById('admin-view').classList.add('active');
+            renderAdminUI();
+            initReportDates();
+        }
+    };
+
+    // Auto-refresh cada 30 segundos para pedidos, reporte y productos
+    setInterval(() => {
+        if (!currentUser) return;
+        const tabActiva = document.querySelector('.nav-btn.active')?.id;
+
+        if (tabActiva === 'tab-orders') {
+            cargarPedidosAdmin();
+        }
+        if (tabActiva === 'tab-reports') {
+            const fromStr = document.getElementById('report-from').value;
+            const toStr   = document.getElementById('report-to').value;
+            // Solo auto-regenerar si ya se había generado antes
+            if (fromStr && toStr && !document.getElementById('report-kpis').classList.contains('hidden')) {
+                generateReport();
+            }
+        }
+        if (tabActiva === 'tab-products') {
+            renderProducts();
+        }
+        if (tabActiva === 'tab-flow') {
+            renderFlowList();
+            if (selectedFlowId !== null) showFlowDetail(selectedFlowId);
+        }
+    }, 30000);
+</script>
+
+<!-- MODAL EDITAR PRODUCTO -->
+<div id="modal-edit-product" class="modal-overlay" onclick="if(event.target===this) closeModal('modal-edit-product')">
+    <div class="bg-white rounded-[2rem] p-8 w-full max-w-lg shadow-2xl max-h-[90vh] overflow-y-auto">
+        <div class="flex justify-between items-center mb-6">
+            <h3 class="text-2xl font-serif font-bold">Editar Producto</h3>
+            <button type="button" onclick="closeModal('modal-edit-product')" class="text-stone-400 hover:text-stone-900"><i data-lucide="x"></i></button>
+        </div>
+        <div class="space-y-4">
+            <input type="hidden" id="edit-prod-id">
+            <div><label class="block text-xs font-bold text-stone-600 mb-1">Nombre</label><input type="text" id="edit-prod-name" class="form-input" placeholder="Nombre del producto"></div>
+            <div class="grid grid-cols-2 gap-4">
+                <div><label class="block text-xs font-bold text-stone-600 mb-1">Categoría</label>
+                    <select id="edit-prod-cat" class="form-input">
+                        <option>Pasteles</option><option>Bebidas</option><option>Galletas</option>
+                        <option>Pan Dulce</option><option>Postres</option><option>Chocolates</option>
+                    </select>
+                </div>
+                <div><label class="block text-xs font-bold text-stone-600 mb-1">Precio ($)</label><input type="number" id="edit-prod-price" class="form-input" placeholder="0.00" min="1" step="0.01"></div>
+            </div>
+            <div><label class="block text-xs font-bold text-stone-600 mb-1">Stock</label><input type="number" id="edit-prod-stock" class="form-input" placeholder="0" min="0"></div>
+            <div><label class="block text-xs font-bold text-stone-600 mb-1">Descripción</label><textarea id="edit-prod-desc" class="form-input" rows="3" placeholder="Descripción del producto..."></textarea></div>
+            <div class="space-y-2">
+                <label class="block text-xs font-bold text-stone-600 mb-1">Foto del Producto</label>
+                <img id="edit-prod-preview" src="" class="w-full h-40 object-cover rounded-xl border border-stone-200 mb-2">
+                <input type="file" id="edit-prod-file" accept="image/*" onchange="previewImg(this,'edit-prod-preview')" class="w-full text-sm text-stone-500 file:mr-4 file:py-2.5 file:px-4 file:rounded-xl file:border-0 file:text-xs file:font-bold file:bg-[#8A2A2B]/10 file:text-[#8A2A2B] hover:file:bg-[#8A2A2B]/20 cursor-pointer bg-stone-50 rounded-xl border border-stone-200">
+                <p class="text-xs text-stone-400 text-center">— o pega una URL —</p>
+                <input type="text" id="edit-prod-img-url" class="form-input text-sm" placeholder="https://ejemplo.com/foto.jpg" oninput="previewUrl(this,'edit-prod-preview')">
+            </div>
+            <button type="button" onclick="handleEditProduct()" class="w-full bg-[#8A2A2B] hover:bg-[#6D2122] text-white font-bold py-4 rounded-xl transition-colors mt-2">
+                Guardar Cambios
+            </button>
+        </div>
+    </div>
+</div>
+
+</body>
+</html>

@@ -1,0 +1,396 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Portal de Empleado - Delicias de Campeche</title>
+    
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Playfair+Display:wght@600;700&family=Manrope:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+    <script src="https://unpkg.com/lucide@latest"></script>
+
+    <!-- API COMPARTIDA (Sincroniza con Tienda y Admin via MySQL) -->
+    <script>
+        // Cache local
+        window._pedidosCache = [];
+        window._productosCache = [];
+
+        window.API = {
+            // Pedidos
+            getPedidos: async () => {
+                const res = await fetch('/api/pedidos');
+                window._pedidosCache = await res.json();
+                return window._pedidosCache;
+            },
+            updatePedidoStatus: async (id, status) => {
+                await fetch(`/api/pedidos/${id}`, {
+                    method: 'PUT',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ status })
+                });
+            },
+            // Productos
+            getProductos: async () => {
+                const res = await fetch('/api/productos');
+                window._productosCache = await res.json();
+                return window._productosCache;
+            },
+            updateStock: async (id, nuevoStock) => {
+                await fetch(`/api/productos/${id}`, {
+                    method: 'PUT',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ stock: nuevoStock })
+                });
+            },
+            // Login
+            login: async (email, password, role) => {
+                const res = await fetch('/api/login', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ email, password, role })
+                });
+                if (!res.ok) return null;
+                return await res.json();
+            },
+            // Cambiar contraseña
+            updatePassword: async (id, password) => {
+                await fetch(`/api/usuarios/${id}/password`, {
+                    method: 'PUT',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ password })
+                });
+            }
+        };
+    </script>
+
+    <style>
+        :root { --marron-primario: #8A2A2B; --sidebar-bg: #1A1512; }
+        body { font-family: 'Manrope', sans-serif; background-color: #F3F4F6; margin: 0; overflow: hidden; }
+        .font-serif { font-family: 'Playfair Display', serif; }
+        .page-view { display: none; height: 100vh; width: 100vw; }
+        .page-view.active { display: flex; }
+
+        /* Login Empleado */
+        .login-bg { background-image: url('https://images.unsplash.com/photo-1509440159596-0249088772ff?q=80&w=2000'); background-size: cover; background-position: center; }
+
+        /* Sidebar & Layout */
+        aside { width: 260px; background-color: var(--sidebar-bg); color: white; display: flex; flex-direction: column; flex-shrink: 0; }
+        .nav-btn { display: flex; align-items: center; gap: 12px; padding: 16px 24px; color: #A0A0A0; transition: all 0.2s; cursor: pointer; border-left: 4px solid transparent; }
+        .nav-btn:hover { background-color: rgba(255,255,255,0.05); color: white; }
+        .nav-btn.active { background-color: rgba(138, 42, 43, 0.15); color: white; border-left-color: var(--marron-primario); }
+        main { flex-grow: 1; overflow-y: auto; padding: 32px; background-color: #F9FAFB; }
+        .admin-card { background-color: white; border-radius: 20px; padding: 24px; box-shadow: 0 4px 6px rgba(0,0,0,0.02); border: 1px solid #E5E7EB; }
+        .form-input { width: 100%; padding: 12px 16px; border-radius: 10px; border: 1px solid #E5E7EB; font-size: 14px; outline: none; transition: border-color 0.2s; }
+        .form-input:focus { border-color: var(--marron-primario); }
+
+        /* Order Status Colors */
+        .status-badge { padding: 6px 12px; border-radius: 9999px; font-size: 11px; font-weight: bold; text-transform: uppercase; letter-spacing: 0.05em; display: inline-block; }
+        .status-Pendiente { background-color: #FEF3C7; color: #92400E; border: 1px solid #FCD34D; }
+        .status-Preparando { background-color: #DBEAFE; color: #1E40AF; border: 1px solid #BFDBFE; }
+        .status-Listo { background-color: #D1FAE5; color: #065F46; border: 1px solid #A7F3D0; }
+        .status-Entregado { background-color: #F3F4F6; color: #4B5563; border: 1px solid #E5E7EB; }
+    </style>
+</head>
+<body>
+
+    <!-- VISTA: LOGIN (Solo Empleados) -->
+    <div id="login-view" class="page-view active login-bg relative justify-center items-center">
+        <div class="absolute inset-0 bg-black/60 backdrop-blur-sm"></div>
+        <div class="relative z-10 bg-white p-8 rounded-3xl shadow-2xl w-full max-w-md mx-6">
+            <div class="text-center mb-8">
+                <div class="w-16 h-16 bg-[#8A2A2B] rounded-full flex items-center justify-center text-white font-serif text-3xl mx-auto mb-4 shadow-lg">D</div>
+                <h2 class="font-serif text-3xl font-bold text-stone-900">Portal de Cocina</h2>
+                <p class="text-sm text-stone-500 mt-2">Acceso Exclusivo a Empleados</p>
+            </div>
+            
+            <form onsubmit="event.preventDefault(); handleLogin();" class="space-y-4">
+                <input type="email" id="login-email" required class="form-input" placeholder="Correo de Empleado (emp@correo.com)">
+                <input type="password" id="login-pass" required class="form-input" placeholder="Contraseña (123)">
+                <button type="submit" class="w-full bg-[#8A2A2B] text-white py-3.5 rounded-xl font-bold mt-4 hover:bg-[#6D2122] transition-colors shadow-md">Acceder al Sistema</button>
+            </form>
+        </div>
+    </div>
+
+    <!-- VISTA: DASHBOARD EMPLEADO -->
+    <div id="employee-view" class="page-view bg-stone-100">
+        <aside>
+            <div class="p-6 mb-4 flex items-center gap-3">
+                <div class="w-10 h-10 bg-white rounded-full flex items-center justify-center text-[#8A2A2B] font-serif text-xl shadow-lg">D</div>
+                <div><h1 class="font-serif text-lg font-bold leading-tight">Cocina</h1><p class="text-[9px] uppercase tracking-widest text-stone-400">Portal Empleado</p></div>
+            </div>
+            <nav class="flex flex-col gap-1">
+                <button onclick="switchTab('orders')" id="tab-orders" class="nav-btn active"><i data-lucide="clipboard-list" class="w-5 h-5"></i> Pedidos Recibidos</button>
+                <button onclick="switchTab('inventory')" id="tab-inventory" class="nav-btn"><i data-lucide="box" class="w-5 h-5"></i> Ajuste de Mostrador</button>
+                <button onclick="switchTab('settings')" id="tab-settings" class="nav-btn"><i data-lucide="settings" class="w-5 h-5"></i> Mi Cuenta</button>
+            </nav>
+            <div class="mt-auto p-6 border-t border-white/10">
+                <button onclick="logout()" class="flex items-center gap-3 text-red-400 hover:text-red-500 transition-colors text-sm font-semibold w-full"><i data-lucide="log-out" class="w-5 h-5"></i> Cerrar Sesión</button>
+            </div>
+        </aside>
+
+        <main>
+            <!-- SECCIÓN: PEDIDOS -->
+            <section id="view-orders" class="block">
+                <div class="flex justify-between items-center mb-8">
+                    <div>
+                        <h2 class="text-3xl font-bold text-stone-900 font-serif">Pedidos de Clientes</h2>
+                        <p class="text-sm text-stone-500">Los pedidos de la tienda online aparecerán aquí en tiempo real.</p>
+                    </div>
+                    <!-- Botón para recargar por si acaso (aunque es en tiempo real) -->
+                    <button onclick="renderOrders()" class="bg-white text-stone-600 border border-stone-200 px-4 py-2 rounded-xl text-sm font-bold hover:bg-stone-50 flex items-center gap-2 shadow-sm">
+                        <i data-lucide="refresh-cw" class="w-4 h-4"></i> Actualizar
+                    </button>
+                </div>
+                
+                <div id="orders-container" class="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-6">
+                    <!-- Los pedidos se inyectan por JS -->
+                </div>
+            </section>
+
+            <!-- SECCIÓN: INVENTARIO FÍSICO -->
+            <section id="view-inventory" class="hidden">
+                <h2 class="text-3xl font-bold text-stone-900 font-serif mb-2">Ajuste Rápido de Inventario</h2>
+                <p class="text-sm text-stone-500 mb-8">Resta stock si vendes algo físicamente en el local para que la tienda online se actualice.</p>
+                
+                <div class="admin-card p-0">
+                    <table class="w-full text-left border-collapse">
+                        <thead><tr class="bg-stone-50 text-stone-500 text-xs uppercase border-b"><th class="p-4">Producto</th><th class="p-4 text-center">Stock Actual</th></tr></thead>
+                        <tbody id="emp-inventory-table" class="divide-y divide-stone-100 text-sm"></tbody>
+                    </table>
+                </div>
+            </section>
+
+            <!-- SECCIÓN: CONFIGURACIÓN -->
+            <section id="view-settings" class="hidden">
+                <h2 class="text-3xl font-bold text-stone-900 font-serif mb-8">Seguridad de tu Cuenta</h2>
+                <div class="admin-card max-w-md">
+                    <h3 class="text-lg font-bold text-stone-800 mb-2">Cambiar Mi Contraseña</h3>
+                    <form onsubmit="event.preventDefault(); handleChangePassword();" class="space-y-4">
+                        <div><label class="block text-xs font-bold text-stone-600 mb-1">Contraseña Actual</label><input type="password" id="current-password" required class="form-input"></div>
+                        <div><label class="block text-xs font-bold text-stone-600 mb-1">Nueva Contraseña</label><input type="password" id="new-password" required class="form-input"></div>
+                        <div><label class="block text-xs font-bold text-stone-600 mb-1">Confirmar Nueva Contraseña</label><input type="password" id="confirm-password" required class="form-input"></div>
+                        <button type="submit" class="w-full bg-[#8A2A2B] text-white py-3 rounded-xl font-bold mt-4 hover:bg-[#6D2122] shadow-md transition-colors">Actualizar Contraseña</button>
+                    </form>
+                </div>
+            </section>
+        </main>
+    </div>
+
+    <!-- Toast Notification -->
+    <div id="toast" class="fixed bottom-6 right-6 bg-stone-900 text-white px-6 py-3 rounded-xl text-sm font-medium shadow-2xl transition-all duration-300 opacity-0 translate-y-10 z-[3000] flex items-center gap-2 pointer-events-none">
+        <i data-lucide="check-circle-2" class="w-4 h-4 text-green-400"></i><span id="toast-msg">Mensaje</span>
+    </div>
+
+    <script>
+        let currentUser = null;
+
+        // INICIO DE SESIÓN
+        async function handleLogin() {
+            const email = document.getElementById('login-email').value;
+            const pass = document.getElementById('login-pass').value;
+
+            const user = await window.API.login(email, pass, 'employee');
+
+            if (user) {
+                currentUser = user;
+                document.getElementById('login-view').classList.remove('active');
+                document.getElementById('employee-view').classList.add('active');
+                document.getElementById('login-email').value = '';
+                document.getElementById('login-pass').value = '';
+                renderEmpUI();
+                showToast(`¡Bienvenido, ${user.name}!`);
+            } else {
+                showToast('Correo incorrecto o no tienes permiso de empleado.');
+            }
+        }
+
+        // CERRAR SESIÓN
+        function logout() {
+            if (confirm("¿Cerrar sesión de cocina?")) {
+                currentUser = null;
+                document.querySelectorAll('.page-view').forEach(el => el.classList.remove('active'));
+                document.getElementById('login-view').classList.add('active');
+            }
+        }
+
+        // CAMBIAR CONTRASEÑA
+        async function handleChangePassword() {
+            if (!currentUser) return;
+            const currentPass = document.getElementById('current-password').value;
+            const newPass = document.getElementById('new-password').value;
+            const confirmPass = document.getElementById('confirm-password').value;
+
+            // Verificar contraseña actual via API
+            const verificado = await window.API.login(currentUser.email, currentPass, 'employee');
+            if (!verificado) return showToast('Contraseña actual incorrecta.');
+            if (newPass !== confirmPass) return showToast('Las contraseñas no coinciden.');
+            if (newPass.length < 3) return showToast('La contraseña debe tener al menos 3 caracteres.');
+
+            await window.API.updatePassword(currentUser.id, newPass);
+
+            document.getElementById('current-password').value = '';
+            document.getElementById('new-password').value = '';
+            document.getElementById('confirm-password').value = '';
+
+            showToast('¡Contraseña actualizada correctamente!');
+        }
+
+        // NAVEGACIÓN DE PESTAÑAS
+        function switchTab(tabId) {
+            ['orders', 'inventory', 'settings'].forEach(t => {
+                document.getElementById(`view-${t}`).classList.add('hidden');
+                document.getElementById(`tab-${t}`).classList.remove('active');
+            });
+            document.getElementById(`view-${tabId}`).classList.remove('hidden');
+            document.getElementById(`tab-${tabId}`).classList.add('active');
+
+            if (tabId === 'orders') renderOrders();
+            if (tabId === 'inventory') renderInventory();
+        }
+
+        // RENDERIZADO PRINCIPAL
+        function renderEmpUI() {
+            renderOrders();
+            renderInventory();
+        }
+
+        // RENDERIZAR PEDIDOS
+        async function renderOrders() {
+            const container = document.getElementById('orders-container');
+            container.innerHTML = '<div class="col-span-full p-10 text-center"><p class="text-stone-400">Cargando pedidos...</p></div>';
+
+            const orders = await window.API.getPedidos();
+
+            if (orders.length === 0) {
+                container.innerHTML = '<div class="col-span-full p-10 text-center bg-white rounded-3xl border border-stone-100"><i data-lucide="inbox" class="w-12 h-12 text-stone-200 mx-auto mb-3"></i><p class="text-stone-500 font-bold">No hay pedidos pendientes.</p><p class="text-xs text-stone-400">Cuando un cliente compre en línea, aparecerá aquí.</p></div>';
+                lucide.createIcons();
+                return;
+            }
+
+            container.innerHTML = '';
+
+            orders.forEach(o => {
+                const items = typeof o.items === 'string' ? JSON.parse(o.items) : o.items;
+                let itemsList = '';
+                items.forEach(item => {
+                    itemsList += `<li class="flex justify-between text-sm text-stone-600 border-b border-stone-50 py-2"><span><b class="text-[#8A2A2B] bg-[#8A2A2B]/10 px-2 py-0.5 rounded-md mr-1">${item.quantity || item.qty || 1}x</b> ${item.name}</span></li>`;
+                });
+
+                let buttonsHTML = '';
+                if (o.status === 'Pendiente') {
+                    buttonsHTML = `<button onclick="changeOrderStatus(${o.id}, 'Preparando')" class="w-full mt-4 bg-yellow-500 text-white py-3 rounded-xl font-bold shadow-md hover:bg-yellow-600 transition-colors">Empezar a Preparar</button>`;
+                } else if (o.status === 'Preparando') {
+                    const btnText = o.tipoEntrega === 'domicilio' ? 'Marcar Listo para Enviar' : 'Marcar para Recoger';
+                    buttonsHTML = `<button onclick="changeOrderStatus(${o.id}, 'Listo')" class="w-full mt-4 bg-blue-500 text-white py-3 rounded-xl font-bold shadow-md hover:bg-blue-600 transition-colors">${btnText}</button>`;
+                } else if (o.status === 'Listo') {
+                    if (o.tipoEntrega === 'domicilio') {
+                        buttonsHTML = `<div class="w-full mt-4 bg-stone-100 text-stone-500 py-3 rounded-xl font-bold text-center border border-stone-200 flex justify-center gap-2"><i data-lucide="bike" class="w-5 h-5"></i> Esperando al Repartidor</div>`;
+                    } else {
+                        buttonsHTML = `<button onclick="changeOrderStatus(${o.id}, 'Entregado')" class="w-full mt-4 bg-green-600 text-white py-3 rounded-xl font-bold shadow-md hover:bg-green-700 transition-colors">Entregar al Cliente en Tienda</button>`;
+                    }
+                } else {
+                    buttonsHTML = `<div class="w-full mt-4 bg-stone-100 text-stone-400 py-3 rounded-xl font-bold text-center border border-stone-200">Completado</div>`;
+                }
+
+                const cardClass = o.status === 'Entregado' ? 'opacity-60 grayscale-[0.5]' : '';
+                const direccionHTML = o.tipoEntrega === 'domicilio'
+                    ? `<span class="font-normal text-stone-600 block mt-1"><i data-lucide="map-pin" class="w-3 h-3 inline"></i> ${o.direccion || 'No especificada'}</span>`
+                    : '';
+
+                container.insertAdjacentHTML('beforeend', `
+                    <div class="admin-card flex flex-col justify-between ${cardClass}">
+                        <div>
+                            <div class="flex justify-between items-start mb-4">
+                                <div>
+                                    <span class="font-bold text-stone-400 text-xs block mb-1">Folio: #${o.id}</span>
+                                    <span class="status-badge status-${o.status}">${o.status}</span>
+                                </div>
+                                <span class="bg-stone-100 text-stone-500 text-[10px] px-2 py-1 rounded font-bold"><i data-lucide="clock" class="w-3 h-3 inline"></i> ${o.fecha || ''}</span>
+                            </div>
+                            <h3 class="font-serif text-xl font-bold text-stone-800 mb-1">${o.cliente || 'Cliente'}</h3>
+                            <p class="text-xs font-bold text-stone-500 mb-4 flex flex-col items-start gap-1 bg-stone-50 p-2 rounded-lg border border-stone-100">
+                                <span><i data-lucide="${o.tipoEntrega === 'domicilio' ? 'bike' : 'store'}" class="w-3 h-3 inline"></i> ${o.tipoEntrega === 'domicilio' ? 'Envío a Domicilio' : 'Recoge en Tienda'}</span>
+                                ${direccionHTML}
+                            </p>
+                            <ul class="mb-6 space-y-1">${itemsList}</ul>
+                        </div>
+                        <div>
+                            <div class="flex justify-between items-center border-t border-stone-100 pt-4">
+                                <span class="font-bold text-stone-500 text-sm">Total Pagado</span>
+                                <span class="font-bold text-[#8A2A2B] text-lg">$${parseFloat(o.total).toFixed(2)}</span>
+                            </div>
+                            ${buttonsHTML}
+                        </div>
+                    </div>
+                `);
+            });
+            lucide.createIcons();
+        }
+
+        // CAMBIAR ESTADO DEL PEDIDO
+        async function changeOrderStatus(id, newStatus) {
+            await window.API.updatePedidoStatus(id, newStatus);
+            renderOrders();
+            showToast(`Pedido #${id} ahora está ${newStatus}`);
+        }
+
+        // RENDERIZAR INVENTARIO
+        async function renderInventory() {
+            const tbody = document.getElementById('emp-inventory-table');
+            tbody.innerHTML = '<tr><td colspan="2" class="p-8 text-center text-stone-400">Cargando...</td></tr>';
+
+            const productos = await window.API.getProductos();
+            tbody.innerHTML = '';
+
+            productos.forEach(p => {
+                const stockColor = p.stock > 10 ? 'text-green-600' : (p.stock > 0 ? 'text-yellow-600' : 'text-red-600 font-bold');
+                tbody.insertAdjacentHTML('beforeend', `
+                    <tr>
+                        <td class="p-4 flex items-center gap-4">
+                            <img src="${p.img}" class="w-12 h-12 rounded-lg object-cover shadow-sm">
+                            <div>
+                                <span class="font-bold text-stone-800 block">${p.name}</span>
+                                <span class="text-xs text-stone-400">${p.category}</span>
+                            </div>
+                        </td>
+                        <td class="p-4">
+                            <div class="flex items-center justify-center gap-4 bg-stone-50 py-2 px-4 rounded-full border border-stone-100 w-fit mx-auto">
+                                <button onclick="updateEmpStock(${p.id}, ${p.stock}, -1)" class="w-8 h-8 bg-white shadow-sm border border-stone-200 rounded-full hover:bg-stone-100 transition-colors flex justify-center items-center font-bold text-lg text-stone-600">-</button>
+                                <span class="w-8 text-center ${stockColor} font-bold text-lg">${p.stock}</span>
+                                <button onclick="updateEmpStock(${p.id}, ${p.stock}, 1)" class="w-8 h-8 bg-white shadow-sm border border-stone-200 rounded-full hover:bg-stone-100 transition-colors flex justify-center items-center font-bold text-lg text-stone-600">+</button>
+                            </div>
+                        </td>
+                    </tr>
+                `);
+            });
+            lucide.createIcons();
+        }
+
+        // AJUSTAR STOCK
+        async function updateEmpStock(id, stockActual, change) {
+            const nuevoStock = stockActual + change;
+            if (nuevoStock < 0) return showToast('El stock no puede ser negativo.');
+            // Necesitamos los datos completos del producto para el PUT
+            const productos = window._productosCache;
+            const p = productos.find(x => x.id === id);
+            if (!p) return;
+            await window.API.updateStock(id, nuevoStock);
+            showToast('Inventario actualizado.');
+            renderInventory();
+        }
+
+        // TOAST
+        function showToast(msg) {
+            const t = document.getElementById('toast');
+            document.getElementById('toast-msg').innerText = msg;
+            t.classList.remove('opacity-0', 'translate-y-10');
+            setTimeout(() => t.classList.add('opacity-0', 'translate-y-10'), 3000);
+        }
+
+        // Auto-refresh cada 30 segundos para ver pedidos nuevos
+        setInterval(() => { if (currentUser) renderOrders(); }, 30000);
+
+        window.onload = () => { lucide.createIcons(); };
+    </script>
+</body>
+</html>

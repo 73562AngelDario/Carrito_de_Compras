@@ -1,0 +1,298 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Repartidor - Delicias de Campeche</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;800&family=Playfair+Display:wght@700&display=swap" rel="stylesheet">
+    <script src="https://unpkg.com/lucide@latest"></script>
+    <style>
+        body { font-family: 'Inter', sans-serif; }
+        .font-serif { font-family: 'Playfair Display', serif; }
+        .fondo-oscuro {
+            background-image: linear-gradient(rgba(0,0,0,0.7), rgba(0,0,0,0.7)), url('https://images.unsplash.com/photo-1513104890138-7c749659a591?q=80&w=2070&auto=format&fit=crop');
+            background-size: cover;
+            background-position: center;
+        }
+        .input-limpio {
+            width: 100%;
+            padding: 1rem 1.5rem;
+            background-color: #f9fafb;
+            border: 2px solid #f3f4f6;
+            border-radius: 1rem;
+            outline: none;
+            transition: all 0.3s;
+            color: #1f2937;
+            font-weight: 500;
+        }
+        .input-limpio:focus {
+            border-color: #8b2e2e;
+            background-color: #ffffff;
+        }
+    </style>
+</head>
+<body class="fondo-oscuro min-h-screen flex items-center justify-center p-4">
+
+    <!-- PANTALLA 1: INICIO DE SESIÓN -->
+    <div id="pantalla-login" class="bg-white rounded-[2.5rem] shadow-2xl w-full max-w-[400px] p-10 flex flex-col items-center block">
+        <div class="w-24 h-24 bg-[#8b2e2e] rounded-full flex items-center justify-center shadow-lg mb-6">
+            <i data-lucide="bike" class="w-12 h-12 text-white"></i>
+        </div>
+
+        <h1 class="text-4xl font-serif font-bold text-stone-900 mb-1">Repartidor</h1>
+        <p class="text-stone-400 text-xs font-bold mb-8 uppercase tracking-widest">Portal de Entregas</p>
+
+        <!-- Bloque de inputs simple, SIN FORMULARIO -->
+        <div class="w-full space-y-4">
+            <input type="email" id="rep-correo" placeholder="Correo electrónico" class="input-limpio">
+            <input type="password" id="rep-pass" placeholder="Contraseña" class="input-limpio">
+
+            <button onclick="iniciarSesion()" class="w-full bg-[#8b2e2e] hover:bg-[#722626] text-white font-bold py-4 rounded-2xl mt-6 shadow-xl transition-all active:scale-95 flex items-center justify-center gap-2 text-lg">
+                <i data-lucide="log-in" class="w-5 h-5"></i> Entrar a mi Turno
+            </button>
+        </div>
+    </div>
+
+    <!-- PANTALLA 2: PANEL DE CONTROL -->
+    <div id="pantalla-panel" class="hidden bg-stone-100 min-h-screen w-full absolute inset-0 flex-col">
+        <!-- Encabezado -->
+        <header class="bg-[#8A2A2B] text-white p-6 shadow-md sticky top-0 z-50 flex justify-between items-center rounded-b-3xl">
+            <div>
+                <p class="text-xs text-white/70 uppercase tracking-widest font-bold mb-1">En ruta</p>
+                <h1 id="rep-nombre" class="font-serif text-2xl font-bold leading-tight">Repartidor</h1>
+            </div>
+            <button onclick="cerrarSesion()" class="p-3 bg-white/10 rounded-full hover:bg-white/20 transition-colors" title="Terminar Turno">
+                <i data-lucide="power" class="w-6 h-6"></i>
+            </button>
+        </header>
+
+        <!-- Contenido principal -->
+        <main class="flex-1 p-6 pb-24 overflow-y-auto max-w-xl mx-auto w-full">
+            <div class="flex justify-between items-center mb-6">
+                <h2 class="text-2xl font-bold text-stone-900">Entregas Listas</h2>
+                <button onclick="cargarPedidos()" class="p-2 text-stone-500 bg-white rounded-full shadow-sm hover:text-[#8A2A2B]">
+                    <i data-lucide="refresh-cw" class="w-5 h-5"></i>
+                </button>
+            </div>
+            
+            <div id="contenedor-pedidos" class="space-y-5">
+                <!-- Los pedidos aparecerán aquí -->
+            </div>
+        </main>
+    </div>
+
+    <!-- MODAL DE ALERTAS -->
+    <div id="modal-alerta" class="hidden fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center p-4 z-[100]">
+        <div class="bg-white rounded-[2rem] p-8 max-w-sm w-full shadow-2xl text-center">
+            <div class="w-16 h-16 bg-red-100 rounded-full flex items-center justify-center mx-auto mb-4" id="alerta-icono-bg">
+                <i data-lucide="alert-circle" class="w-8 h-8 text-red-600" id="alerta-icono"></i>
+            </div>
+            <h3 id="alerta-titulo" class="text-xl font-bold text-stone-900 mb-2">Atención</h3>
+            <p id="alerta-mensaje" class="text-stone-500 text-sm mb-8 font-medium"></p>
+            <button onclick="cerrarAlerta()" class="w-full py-4 bg-stone-900 text-white font-bold rounded-xl hover:bg-black transition-colors">Entendido</button>
+        </div>
+    </div>
+
+    <script>
+        // =====================================================
+        // REPARTIDOR - Conectado a MySQL via API REST
+        // =====================================================
+
+        let repUsuario = null;
+
+        // --- UI HELPERS ---
+        function mostrarAlerta(titulo, mensaje, exito = false) {
+            document.getElementById('alerta-titulo').innerText = titulo;
+            document.getElementById('alerta-mensaje').innerText = mensaje;
+            const bg = document.getElementById('alerta-icono-bg');
+            const ico = document.getElementById('alerta-icono');
+            if (exito) {
+                bg.className = "w-16 h-16 bg-green-100 rounded-full flex items-center justify-center mx-auto mb-4";
+                ico.setAttribute('data-lucide', 'check-circle-2');
+                ico.className = "w-8 h-8 text-green-600";
+            } else {
+                bg.className = "w-16 h-16 bg-red-100 rounded-full flex items-center justify-center mx-auto mb-4";
+                ico.setAttribute('data-lucide', 'alert-circle');
+                ico.className = "w-8 h-8 text-red-600";
+            }
+            lucide.createIcons();
+            document.getElementById('modal-alerta').classList.remove('hidden');
+            document.getElementById('modal-alerta').classList.add('flex');
+        }
+
+        function cerrarAlerta() {
+            document.getElementById('modal-alerta').classList.add('hidden');
+            document.getElementById('modal-alerta').classList.remove('flex');
+        }
+
+        function abrirPanel(nombre) {
+            document.getElementById('rep-nombre').innerText = nombre;
+            document.getElementById('pantalla-login').classList.add('hidden');
+            document.getElementById('pantalla-panel').classList.remove('hidden');
+            document.getElementById('pantalla-panel').classList.add('flex');
+            cargarPedidos();
+        }
+
+        // --- LOGIN via API ---
+        async function iniciarSesion() {
+            const correo = document.getElementById('rep-correo').value.trim().toLowerCase();
+            const pass   = document.getElementById('rep-pass').value.trim();
+
+            if (!correo || !pass) {
+                mostrarAlerta("Faltan datos", "Por favor escribe tu correo y contrase\u00f1a.");
+                return;
+            }
+
+            try {
+                const res = await fetch('/api/login', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ email: correo, password: pass, role: 'driver' })
+                });
+
+                if (!res.ok) {
+                    mostrarAlerta("Acceso Denegado", "Correo o contrase\u00f1a incorrectos, o no tienes el rol de Repartidor.");
+                    return;
+                }
+
+                repUsuario = await res.json();
+                sessionStorage.setItem('sesion_repartidor', JSON.stringify(repUsuario));
+                abrirPanel(repUsuario.name);
+
+            } catch (err) {
+                mostrarAlerta("Error de Red", "No se pudo conectar con el servidor. Verifica tu conexi\u00f3n.");
+            }
+        }
+
+        function cerrarSesion() {
+            if (confirm("\u00bfEst\u00e1s seguro de terminar tu turno?")) {
+                sessionStorage.removeItem('sesion_repartidor');
+                repUsuario = null;
+                document.getElementById('pantalla-panel').classList.add('hidden');
+                document.getElementById('pantalla-panel').classList.remove('flex');
+                document.getElementById('pantalla-login').classList.remove('hidden');
+                document.getElementById('rep-correo').value = '';
+                document.getElementById('rep-pass').value = '';
+            }
+        }
+
+        // --- PEDIDOS via API ---
+        async function cargarPedidos() {
+            const contenedor = document.getElementById('contenedor-pedidos');
+            contenedor.innerHTML = '<div class="text-center p-10 text-stone-400">Cargando entregas...</div>';
+
+            try {
+                const res = await fetch('/api/pedidos');
+                const todos = await res.json();
+
+                // Solo pedidos a domicilio que ya est\u00e1n Listos
+                const pedidos = todos.filter(o => o.tipoEntrega === 'domicilio' && o.status === 'Listo');
+
+                if (pedidos.length === 0) {
+                    contenedor.innerHTML = `
+                        <div class="text-center bg-white p-10 rounded-[2rem] shadow-sm mt-8 border border-stone-100">
+                            <div class="w-20 h-20 bg-stone-50 rounded-full flex items-center justify-center mx-auto mb-4">
+                                <i data-lucide="coffee" class="w-10 h-10 text-stone-300"></i>
+                            </div>
+                            <h3 class="text-xl font-bold text-stone-800 mb-2">Todo en orden</h3>
+                            <p class="text-stone-500 text-sm leading-relaxed">No hay pedidos listos para llevar a domicilio en este momento.</p>
+                        </div>`;
+                    lucide.createIcons();
+                    return;
+                }
+
+                contenedor.innerHTML = '';
+                pedidos.forEach(pedido => {
+                    const items = typeof pedido.items === 'string' ? JSON.parse(pedido.items) : pedido.items;
+                    let listaHtml = items && items.length > 0
+                        ? items.map(item => `
+                            <div class="text-sm text-stone-700 py-1 border-b border-stone-100 last:border-0">
+                                <span class="font-black text-[#8A2A2B] bg-red-50 px-2 py-0.5 rounded mr-2">${item.quantity || item.qty || 1}x</span>
+                                ${item.name}
+                            </div>`).join('')
+                        : '<p class="text-xs text-stone-400 italic">Sin detalle de art\u00edculos.</p>';
+
+                    contenedor.insertAdjacentHTML('beforeend', `
+                        <div class="bg-white p-6 rounded-3xl shadow-sm border border-stone-200 relative overflow-hidden">
+                            <div class="absolute top-0 left-0 w-2 h-full bg-[#8A2A2B]"></div>
+
+                            <div class="flex justify-between items-start mb-4 pl-2">
+                                <div class="pr-4">
+                                    <span class="text-[10px] font-black text-stone-400 uppercase tracking-widest block mb-1">Orden #${pedido.id}</span>
+                                    <h3 class="text-xl font-bold text-stone-900">${pedido.cliente || 'Cliente'}</h3>
+                                    <p class="text-sm font-medium text-stone-600 mt-2 bg-stone-50 p-2 rounded-xl border border-stone-100 leading-snug">
+                                        <i data-lucide="map-pin" class="w-4 h-4 inline text-[#8A2A2B] mr-1"></i>
+                                        ${pedido.direccion || 'Direcci\u00f3n no especificada'}
+                                    </p>
+                                </div>
+                                <div class="bg-stone-50 p-3 rounded-full border border-stone-100 flex-shrink-0">
+                                    <i data-lucide="bike" class="w-5 h-5 text-[#8A2A2B]"></i>
+                                </div>
+                            </div>
+
+                            <div class="pl-2 mb-6">
+                                <p class="text-[10px] font-bold text-stone-400 uppercase tracking-widest mb-2">Para entregar:</p>
+                                <div class="bg-stone-50 p-4 rounded-2xl border border-stone-100">${listaHtml}</div>
+                            </div>
+
+                            <div class="pl-2 flex items-center justify-between border-t border-stone-100 pt-5 mb-5">
+                                <span class="text-sm font-bold text-stone-500">Cobrar al cliente:</span>
+                                <span class="text-3xl font-black text-[#8A2A2B]">$${parseFloat(pedido.total || 0).toFixed(2)}</span>
+                            </div>
+
+                            <button onclick="marcarEntregado(${pedido.id})"
+                                class="w-full bg-[#8A2A2B] hover:bg-[#6D2122] text-white py-4 rounded-xl font-bold text-lg flex justify-center items-center gap-2 transition-all shadow-md active:scale-95">
+                                <i data-lucide="check" class="w-6 h-6"></i> Marcar como Entregado
+                            </button>
+                        </div>
+                    `);
+                });
+                lucide.createIcons();
+
+            } catch (err) {
+                contenedor.innerHTML = '<div class="text-center p-10 text-red-400 font-bold">Error al cargar pedidos. Verifica la conexi\u00f3n.</div>';
+            }
+        }
+
+        async function marcarEntregado(id) {
+            if (!confirm(`\u00bfConfirmar entrega del pedido #${id}?`)) return;
+
+            try {
+                const res = await fetch(`/api/pedidos/${id}`, {
+                    method: 'PUT',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ status: 'Entregado' })
+                });
+                if (!res.ok) throw new Error();
+                mostrarAlerta("\u00a1Entrega Completada!", `La orden #${id} fue marcada como entregada.`, true);
+                cargarPedidos();
+            } catch (err) {
+                mostrarAlerta("Error", "No se pudo actualizar el pedido. Intenta de nuevo.");
+            }
+        }
+
+        // --- ARRANQUE ---
+        window.onload = () => {
+            lucide.createIcons();
+            // Recuperar sesi\u00f3n activa
+            const sesion = sessionStorage.getItem('sesion_repartidor');
+            if (sesion) {
+                try {
+                    repUsuario = JSON.parse(sesion);
+                    abrirPanel(repUsuario.name);
+                } catch(e) {
+                    sessionStorage.removeItem('sesion_repartidor');
+                }
+            }
+        };
+
+        // Auto-refresh cada 20 segundos para ver pedidos nuevos del empleado
+        setInterval(() => {
+            if (!document.getElementById('pantalla-panel').classList.contains('hidden')) {
+                cargarPedidos();
+            }
+        }, 20000);
+    </script>
+</body>
+</html>
