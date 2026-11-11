@@ -253,13 +253,17 @@ db.query(`CREATE TABLE IF NOT EXISTS usuarios (
     role VARCHAR(50) DEFAULT 'client',
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 )`).then(async () => {
-    // Insertar usuarios por defecto si no existen
-    const [rows] = await db.query('SELECT COUNT(*) as count FROM usuarios');
-    if (rows[0].count === 0) {
-        await db.query(`INSERT INTO usuarios (name, email, password, role) VALUES
-            ('Admin Principal', 'admin@correo.com', 'admin', 'admin'),
-            ('Empleado de Cocina', 'emp@correo.com', '123', 'employee'),
-            ('Repartidor', 'rep@correo.com', '123', 'driver')`);
+    // Insertar usuarios por defecto que falten (por correo)
+    const defaults = [
+        ['Admin Principal', 'admin@correo.com', 'admin', 'admin'],
+        ['Empleado de Cocina', 'emp@correo.com', '123', 'employee'],
+        ['Repartidor', 'rep@correo.com', '123', 'driver']
+    ];
+    for (const [name, email, password, role] of defaults) {
+        const [ex] = await db.query('SELECT id FROM usuarios WHERE email=?', [email]);
+        if (ex.length === 0) {
+            await db.query('INSERT INTO usuarios (name, email, password, role) VALUES (?,?,?,?)', [name, email, password, role]);
+        }
     }
 }).catch(err => console.error('Error creando tabla usuarios:', err));
 
@@ -376,6 +380,42 @@ app.delete('/api/usuarios/:id', async (req, res) => {
     } catch (err) {
         res.status(500).json({ error: err.message });
     }
+});
+
+// ─────────────────────────────────────────────
+//  DIAGNÓSTICO TEMPORAL (borrar cuando todo funcione)
+// ─────────────────────────────────────────────
+app.get('/api/diagnostico', async (req, res) => {
+    const mysql2 = require('mysql2/promise');
+    let u;
+    try { u = new URL(process.env.DATABASE_URL.trim()); }
+    catch (e) { return res.status(500).json({ error: 'DATABASE_URL ausente o inválida' }); }
+
+    const base = {
+        host: u.hostname,
+        port: Number(u.port) || 3306,
+        user: decodeURIComponent(u.username),
+        password: decodeURIComponent(u.password),
+        database: u.pathname.replace('/', ''),
+        connectTimeout: 15000
+    };
+    const resultado = { destino: base.host + ':' + base.port, usuario: base.user, longitud_password: base.password.length };
+    const pruebas = { sin_ssl: undefined, con_ssl: { rejectUnauthorized: false } };
+
+    for (const [nombre, ssl] of Object.entries(pruebas)) {
+        let conn;
+        try {
+            conn = await mysql2.createConnection({ ...base, ssl });
+            const [r] = await conn.query('SELECT VERSION() AS version');
+            const [t] = await conn.query('SHOW TABLES');
+            resultado[nombre] = { ok: true, version: r[0].version, tablas: t.length };
+        } catch (e) {
+            resultado[nombre] = { ok: false, code: e.code, errno: e.errno, syscall: e.syscall, message: e.message };
+        } finally {
+            if (conn) conn.end().catch(() => {});
+        }
+    }
+    res.json(resultado);
 });
 
 // ✅ FIX: app.listen() solo en desarrollo local, NUNCA en Vercel
