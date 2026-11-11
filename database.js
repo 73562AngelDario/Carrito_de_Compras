@@ -1,13 +1,19 @@
 const mysql = require('mysql2');
 
-const url = process.env.DATABASE_URL;
+const raw = process.env.DATABASE_URL;
 
-if (!url) {
+if (!raw) {
   throw new Error('DATABASE_URL no está definida en las variables de entorno.');
 }
 
+const u = new URL(raw.trim());
+
 const pool = mysql.createPool({
-  uri: url,
+  host: u.hostname,
+  port: Number(u.port) || 3306,
+  user: decodeURIComponent(u.username),
+  password: decodeURIComponent(u.password),
+  database: u.pathname.replace('/', ''),
   ssl: { rejectUnauthorized: false },
   waitForConnections: true,
   connectionLimit: 1,
@@ -27,7 +33,7 @@ async function query(sql, params, intentos = 3) {
       const reintentable = ['PROTOCOL_CONNECTION_LOST', 'ECONNRESET', 'ETIMEDOUT'].includes(err.code)
         || /Connection lost|closed the connection/i.test(err.message);
       if (!reintentable || i === intentos - 1) throw err;
-      await new Promise(r => setTimeout(r, 500));
+      await new Promise(r => setTimeout(r, 700));
     }
   }
 }
