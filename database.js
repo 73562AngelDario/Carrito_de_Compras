@@ -8,6 +8,7 @@ if (!url) {
 
 const pool = mysql.createPool({
   uri: url,
+  ssl: { rejectUnauthorized: false },
   waitForConnections: true,
   connectionLimit: 1,
   maxIdle: 0,
